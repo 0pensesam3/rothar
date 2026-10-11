@@ -10,8 +10,116 @@
 <meta name="apple-mobile-web-app-title" content="Rothar">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#e31837">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// ─── Leaflet-style adapter over MapLibre GL (only the calls this app uses) ───
+// Zoom levels are kept in Leaflet terms (MapLibre's 512px tiles sit one level lower).
+window.L = (() => {
+  const ML = maplibregl;
+  const STYLE = 'https://tiles.openfreemap.org/styles/positron';
+  const ll2 = ll => Array.isArray(ll) ? [ll[1], ll[0]] : [ll.lng ?? ll.lon, ll.lat];
+
+  class Layer { addTo(t) { t.addLayer(this); return this; } _add() {} _remove() {} }
+
+  class TileLayer extends Layer {}            // the style supplies the base map
+
+  class DivIcon { constructor(o) { this.o = o || {}; } }
+
+  class Marker extends Layer {
+    constructor(ll, o = {}) { super(); this.ll = ll; this.o = o; this.html = null; this.rot = 0; }
+    bindPopup(h) { this.html = h; if (this.m) this._popup(); return this; }
+    _popup() { this.m.setPopup(new ML.Popup({ offset: 14, closeButton: false, maxWidth: '260px' }).setHTML(this.html)); }
+    _add(map) {
+      const i = this.o.icon?.o || {};
+      const [w, h] = i.iconSize || [16, 16];
+      const [ax, ay] = i.iconAnchor || [w / 2, h / 2];
+      const el = document.createElement('div');
+      el.style.width = w + 'px'; el.style.height = h + 'px';
+      el.innerHTML = i.html || '';
+      if (this.o.opacity != null) el.style.opacity = this.o.opacity;
+      if (this.o.zIndexOffset) el.style.zIndex = String(this.o.zIndexOffset);
+      this.el = el;
+      this.m = new ML.Marker({ element: el, anchor: 'top-left', offset: [-ax, -ay],
+                               rotationAlignment: this.o.rotationAlignment || 'viewport', pitchAlignment: 'viewport' })
+        .setLngLat(ll2(this.ll)).setRotation(this.rot).addTo(map._ml);
+      if (this.html) this._popup();
+    }
+    _remove() { this.m?.remove(); this.m = null; }
+    setLatLng(ll) { this.ll = ll; this.m?.setLngLat(ll2(ll)); return this; }
+    setRotation(d) { this.rot = d; this.m?.setRotation(d); return this; }
+    getElement() { return this.el; }
+  }
+
+  let seq = 0;
+  class Polyline extends Layer {
+    constructor(lls, o = {}) { super(); this.lls = lls; this.o = o; this.id = 'line' + (++seq); }
+    _add(map) {
+      this.map = map; this.gone = false;
+      map._whenStyle(() => {
+        if (this.gone) return;
+        const ml = map._ml, w = this.o.weight || 3;
+        const paint = { 'line-color': this.o.color || '#3388ff', 'line-width': w, 'line-opacity': this.o.opacity ?? 1 };
+        if (this.o.dashArray) paint['line-dasharray'] = String(this.o.dashArray).split(/[ ,]+/).map(x => Number(x) / w);
+        ml.addSource(this.id, { type: 'geojson', data: { type: 'Feature', properties: {},
+          geometry: { type: 'LineString', coordinates: this.lls.map(ll2) } } });
+        ml.addLayer({ id: this.id, type: 'line', source: this.id,
+          layout: { 'line-cap': this.o.lineCap || 'round', 'line-join': this.o.lineJoin || 'round' }, paint });
+      });
+    }
+    _remove() {
+      this.gone = true;
+      const ml = this.map?._ml; if (!ml || !ml.style) return;
+      if (ml.getLayer(this.id)) ml.removeLayer(this.id);
+      if (ml.getSource(this.id)) ml.removeSource(this.id);
+    }
+  }
+
+  class LayerGroup extends Layer {
+    constructor() { super(); this.layers = new Set(); this.map = null; }
+    addLayer(l) { this.layers.add(l); if (this.map) l._add(this.map); return this; }
+    removeLayer(l) { if (this.layers.delete(l) && this.map) l._remove(); return this; }
+    clearLayers() { if (this.map) this.layers.forEach(l => l._remove()); this.layers.clear(); return this; }
+    getLayers() { return [...this.layers]; }
+    _add(map) { this.map = map; this.layers.forEach(l => l._add(map)); }
+    _remove() { this.layers.forEach(l => l._remove()); this.map = null; }
+  }
+
+  class Bounds { constructor(pts) { this.b = new ML.LngLatBounds(); (pts || []).forEach(p => this.b.extend(ll2(p))); } }
+
+  class MapW {
+    constructor(id, o = {}) {
+      this._ml = new ML.Map({ container: id, style: STYLE, center: [-0.118, 51.506], zoom: 12,
+                              attributionControl: { compact: true }, maxPitch: 70 });
+      this._layers = new Set(); this._ready = false; this._q = [];
+      this._ml.on('load', () => { this._ready = true; this._q.splice(0).forEach(f => f()); });
+      if (o.zoomControl !== false) this._ml.addControl(new ML.NavigationControl({ visualizePitch: true }), 'top-left');
+    }
+    _whenStyle(f) { this._ready ? f() : this._q.push(f); }
+    addLayer(l) { this._layers.add(l); l._add(this); return this; }
+    removeLayer(l) { this._layers.delete(l); l._remove(); return this; }
+    eachLayer(fn) { this._layers.forEach(fn); }
+    on(ev, fn) { this._ml.on(ev, fn); return this; }
+    setView(ll, z, opt) {
+      const o = { center: ll2(ll), zoom: z != null ? z - 1 : this._ml.getZoom() };
+      opt?.animate ? this._ml.easeTo(o) : this._ml.jumpTo(o); return this;
+    }
+    panTo(ll, opt) { this._ml.easeTo({ center: ll2(ll), duration: (opt?.duration ?? 0.5) * 1000 }); return this; }
+    fitBounds(b, opt) {
+      const p = opt?.padding, pad = Array.isArray(p) ? { top: p[1], bottom: p[1], left: p[0], right: p[0] } : (p ?? 20);
+      this._ml.fitBounds(b.b, { padding: pad, duration: 0, bearing: 0, pitch: 0, maxZoom: 16 }); return this;
+    }
+    getCenter() { const c = this._ml.getCenter(); return { lat: c.lat, lng: c.lng }; }
+    getZoom() { return this._ml.getZoom() + 1; }
+  }
+
+  return {
+    map: (id, o) => new MapW(id, o), tileLayer: () => new TileLayer(), TileLayer,
+    layerGroup: () => new LayerGroup(), marker: (ll, o) => new Marker(ll, o), divIcon: o => new DivIcon(o),
+    polyline: (lls, o) => new Polyline(lls, o), latLngBounds: pts => new Bounds(pts),
+  };
+})();
+</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f4f0; overflow: hidden; }
@@ -52,7 +160,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 /* ── Map ── */
 #map-wrap { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 #map { height: 100%; width: 100%; }
-.leaflet-tile-pane { filter: grayscale(1) brightness(1.06) contrast(0.9); }
 #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); color: white; padding: 8px 16px; border-radius: 20px; font-size: 13px; z-index: 2000; display: none; white-space: nowrap; pointer-events: none; max-width: 90%; text-align: center; }
 .map-legend { position: absolute; bottom: 10px; left: 10px; background: white; border-radius: 8px; padding: 8px 10px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
 .leg-row { display: flex; align-items: center; gap: 5px; }
@@ -83,6 +190,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #nav-meta { background: rgba(0,0,0,0.6); padding: 7px 14px; display: flex; align-items: center; justify-content: space-between; pointer-events: auto; }
 #nav-step-label { font-size: 11px; color: rgba(255,255,255,0.7); }
 #nav-eta-label  { font-size: 11px; color: rgba(255,255,255,0.7); }
+#nav-view { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; margin-left: auto; margin-right: 6px; }
+#nav-facing { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
+#nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
 #nav-stop { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
 
 /* ── Walk suggestion banner ── */
@@ -215,9 +325,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     <div id="nav-meta">
       <span id="nav-step-label">Step 1</span>
       <span id="nav-eta-label">Calculating…</span>
+      <button id="nav-view">🧭 North up</button>
       <button id="nav-stop">✕ End</button>
     </div>
   </div>
+
+  <div id="nav-facing"></div>
 
   <div id="avail-popup">
     <div id="avail-popup-head">
@@ -233,7 +346,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 22:45</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 23:30</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.</div>
     <div id="history-list"></div>
@@ -297,12 +410,8 @@ const NAV = {
 // Pending availability alert
 let pendingAlert = null;
 
-// ─── Map — OpenStreetMap tiles, greyed via CSS (CARTO now needs a key) ───────
+// ─── Map — MapLibre with OpenFreeMap's grey Positron style (no key) ──────────
 const map = L.map('map', {zoomControl: true}).setView([51.506, -0.118], 13);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19
-}).addTo(map);
 
 const stationLayer  = L.layerGroup().addTo(map);
 const routeLayer    = L.layerGroup().addTo(map);
@@ -374,7 +483,10 @@ function matchesFilter(s, filter) {
 
 // Only show stations near start/end — reduces visual clutter dramatically
 function isStationVisible(s) {
-  if (!S.start && !S.end) return true; // exploration mode — show all
+  if (!S.start && !S.end) {               // exploration mode: stations around the map centre
+    const c = map.getCenter();
+    return haversine(c.lat, c.lng, s.lat, s.lon) < 2000;
+  }
   const nearStart = S.start ? haversine(S.start.lat, S.start.lon, s.lat, s.lon) < STATION_RADIUS : false;
   const nearEnd   = S.end   ? haversine(S.end.lat,   S.end.lon,   s.lat, s.lon) < STATION_RADIUS : false;
   return nearStart || nearEnd;
@@ -987,6 +1099,112 @@ function updateNavCard() {
   document.getElementById('nav-eta-label').textContent = remSecs>0?`~${fmtTime(remSecs)} left`:'';
 }
 
+// ─── Heading, compass and the "in front of you" camera ───────────────────────
+const angleDiff = (a, b) => ((a - b + 540) % 360) - 180;          // signed, -180..180
+function bearingTo(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;   // iPhone
+  else if (e.absolute && e.alpha != null) h = (360 - e.alpha) % 360;            // Android
+  if (h == null) return;
+  const so = (screen.orientation && screen.orientation.angle) || 0;
+  h = (h + so + 360) % 360;
+  NAV.compass = NAV.compass == null ? h : (NAV.compass + angleDiff(h, NAV.compass) * 0.25 + 360) % 360;  // smooth
+  updateHeading();
+}
+
+// iPhone sends webkitCompassHeading on 'deviceorientation'; Android sends absolute
+// angles on 'deviceorientationabsolute'. Listen for both; onOrientation ignores relative ones.
+function startCompass() {
+  if (NAV.compassOn) return;
+  window.addEventListener('deviceorientation', onOrientation);
+  window.addEventListener('deviceorientationabsolute', onOrientation);
+  NAV.compassOn = true;
+}
+function stopCompass() {
+  window.removeEventListener('deviceorientation', onOrientation);
+  window.removeEventListener('deviceorientationabsolute', onOrientation);
+  NAV.compassOn = false; NAV.compass = null;
+}
+
+// iPhone asks once; this has to run straight from the Start navigation tap
+function requestCompass() {
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    DOE.requestPermission().then(s => s === 'granted' ? startCompass()
+      : toast('Compass off: allow Motion & Orientation access to see which way you face', 5000)).catch(() => {});
+  } else startCompass();
+}
+
+// Point on the current leg ~25 m ahead of you, to judge "facing the right way"
+function aheadPoint(lat, lon) {
+  const cur = NAV.steps[NAV.current]; if (!cur) return null;
+  const pickI = NAV.steps.findIndex(s => s.legType === 'pickup');
+  const route = cur.legType === 'cycle' || cur.legType === 'dropoff' ? S.cycle
+              : (pickI >= 0 && NAV.current < pickI) ? S.walkIn : S.walkOut;
+  const c = route?.geometry?.coordinates; if (!c || c.length < 2) return null;
+  let best = 0, bd = Infinity;
+  c.forEach(([x, y], i) => { const d = haversine(lat, lon, y, x); if (d < bd) { bd = d; best = i; } });
+  let acc = 0;
+  for (let i = best; i < c.length - 1; i++) {
+    acc += haversine(c[i][1], c[i][0], c[i + 1][1], c[i + 1][0]);
+    if (acc >= 25) return { lat: c[i + 1][1], lon: c[i + 1][0] };
+  }
+  const [x, y] = c[c.length - 1]; return { lat: y, lon: x };
+}
+
+function updateHeading() {
+  if (!NAV.active) return;
+  NAV.heading = NAV.gpsHeading ?? NAV.compass ?? null;
+  if (NAV.heading == null) { document.getElementById('nav-facing').style.display = 'none'; return; }
+  NAV.userMarker?.setRotation(NAV.heading);
+
+  // Facing check
+  const el = document.getElementById('nav-facing');
+  const a = NAV.userLat !== undefined && aheadPoint(NAV.userLat, NAV.userLon);
+  if (a) {
+    const d = angleDiff(bearingTo(NAV.userLat, NAV.userLon, a.lat, a.lon), NAV.heading);
+    const [txt, cls] = Math.abs(d) < 40 ? ['✓ Right way', 'ok'] : Math.abs(d) > 140 ? ['↶ Turn around', 'bad']
+                     : d > 0 ? ['↱ Turn right', 'warn'] : ['↰ Turn left', 'warn'];
+    el.textContent = txt; el.className = cls; el.style.display = 'block';
+  }
+
+  // Heading-up camera: rotate at most ~5x a second, ignore tiny jitter
+  if (NAV.view === 'follow' && map._ml) {
+    const now = Date.now();
+    if (now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
+      NAV.lastRotate = now;
+      map._ml.rotateTo(NAV.heading, { duration: 200 });
+    }
+  }
+}
+
+// Follow view: tilted, rotated to your heading, you in the lower part of the screen
+function navCamera(lat, lon) {
+  const ml = map._ml; if (!ml) return;
+  const h = ml.getContainer().clientHeight;
+  const o = { center: [lon, lat], duration: NAV.zoomed ? 800 : 1200 };
+  if (NAV.view === 'follow') Object.assign(o, { pitch: 60, zoom: 17, bearing: NAV.heading ?? ml.getBearing(), padding: { top: h * 0.45, bottom: 0, left: 0, right: 0 } });
+  else Object.assign(o, { pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, ...(NAV.zoomed ? {} : { zoom: 16 }) });
+  ml.easeTo(o);
+  NAV.zoomed = true;
+}
+
+function toggleNavView() {
+  NAV.view = NAV.view === 'follow' ? 'north' : 'follow';
+  document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🧭 North up' : '🧭 Follow';
+  if (NAV.userLat !== undefined) navCamera(NAV.userLat, NAV.userLon);
+}
+
+function resetCamera() {
+  map._ml?.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 600 });
+}
+
 // Keep the screen on while navigating (supported on iPhone from iOS 16.4)
 async function requestWakeLock() {
   try {
@@ -1060,12 +1278,16 @@ async function doProximityRefresh(force) {
 function onNavPosition(pos) {
   const {latitude:lat, longitude:lon} = pos.coords;
   NAV.userLat = lat; NAV.userLon = lon;
-  const dotHTML = `<div style="width:16px;height:16px;border-radius:50%;background:#1d4ed8;border:3px solid white;box-shadow:0 2px 8px rgba(29,78,216,0.55)"></div>`;
-  const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[16,16],iconAnchor:[8,8]});
+  // Blue dot with a beam showing which way you're facing
+  const dotHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs><path d="M24 24 L12 2 A24 24 0 0 1 36 2 Z" fill="url(#beam)"/><circle cx="24" cy="24" r="8" fill="#1d4ed8" stroke="white" stroke-width="3"/></svg>`;
+  const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[48,48],iconAnchor:[24,24]});
   if (NAV.userMarker) NAV.userMarker.setLatLng([lat,lon]);
-  else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000}).addTo(map);
-  if (!NAV.zoomed) { map.setView([lat,lon], 17, {animate:true}); NAV.zoomed = true; }
-  else map.panTo([lat,lon],{animate:true,duration:0.5});
+  else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000,rotationAlignment:'map'}).addTo(map);
+  // Moving fast (cycling): GPS course is steadier than the compass
+  const {heading, speed} = pos.coords;
+  NAV.gpsHeading = (speed != null && speed > 2 && heading != null && !isNaN(heading)) ? heading : null;
+  updateHeading();
+  navCamera(lat, lon);
 
 
   // Auto-advance steps
@@ -1095,7 +1317,9 @@ function startNavigation() {
   if (!S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
   NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
   NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null; NAV.zoomed = false;
-  NAV.userLat = NAV.userLon = undefined;
+  NAV.userLat = NAV.userLon = undefined; NAV.view = 'follow'; NAV.gpsHeading = null;
+  document.getElementById('nav-view').textContent = '🧭 North up';
+  requestCompass();
   requestWakeLock();
   renderStations();
   logJourneyStart();
@@ -1125,6 +1349,8 @@ function stopNavigation() {
   clearNavAlternatives();
   logJourneyEnd(NAV.arrived === true);
   releaseWakeLock();
+  stopCompass(); resetCamera();
+  document.getElementById('nav-facing').style.display = 'none';
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
 }
@@ -1268,6 +1494,10 @@ function photonItem(f, num) {
   const p = f.properties || {};
   const [lon, lat] = f.geometry.coordinates;
   const area = [p.district || p.locality || p.city, p.postcode].filter(Boolean).join(' · ');
+  const addr = [p.housenumber, p.street].filter(Boolean).join(' ');
+  if (p.name && !isStreetFeature(f) && !(p.osm_key === 'place' && p.osm_value === 'house'))
+    return { main: p.name, sub: [addr, area].filter(Boolean).join(' · '), lat, lon,                // named place: pub, shop, station
+             dedupe: `${p.name}|${addr}`.toLowerCase() };
   if (p.housenumber)
     return { main: `${p.housenumber} ${p.street || p.name || ''}`, sub: area, lat, lon,            // exact address
              dedupe: `${p.housenumber} ${p.street || p.name || ''}|${p.district || p.locality || ''}`.toLowerCase() };
@@ -1382,6 +1612,7 @@ document.getElementById('loc-btn').addEventListener('click', requestLocation);
 document.getElementById('refresh-btn').addEventListener('click', () => loadStations(true));
 document.getElementById('start-nav-btn').addEventListener('click', startNavigation);
 document.getElementById('nav-stop').addEventListener('click', stopNavigation);
+document.getElementById('nav-view').addEventListener('click', toggleNavView);
 document.getElementById('history-btn').addEventListener('click', () => { renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
 document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
 document.getElementById('walk-anyway-btn').addEventListener('click', () => {
@@ -1412,6 +1643,10 @@ document.getElementById('avail-reroute').addEventListener('click', rerouteStatio
 
 bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false));
 bindAutocomplete('to-input',  'to-ac',  setEnd);
+
+// Re-render exploration-mode stations when the map moves
+let moveTimer;
+map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(moveTimer); moveTimer = setTimeout(renderStations, 150); } });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 setInterval(updateBadge, 15000);
