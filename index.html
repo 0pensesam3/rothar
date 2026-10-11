@@ -261,8 +261,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TFL        = 'https://api.tfl.gov.uk';
-const OSRM       = 'https://router.project-osrm.org/route/v1';
-const VALHALLA   = 'https://valhalla.openstreetmap.de/route';
+const OSRM_FOOT  = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot';
+const OSRM_BIKE  = 'https://routing.openstreetmap.de/routed-bike/route/v1/bike';
+const VALHALLA   = 'https://valhalla1.openstreetmap.de/route';
 const NOMINATIM  = 'https://nominatim.openstreetmap.org';
 
 const STATION_RADIUS = 800;   // m — only render stations within this range when journey is set
@@ -539,16 +540,12 @@ async function fetchCycleRoute(la1, lo1, la2, lo2) {
   // use_roads: 0.9=fastest (roads), 0.5=balanced, 0.1=quietest (paths/lanes)
   const useRoads = S.routeType === 'fastest' ? 0.9 : S.routeType === 'quietest' ? 0.0 : 0.5;
   try {
-    const res = await fetch(VALHALLA, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
+    const res = await fetch(VALHALLA + '?json=' + encodeURIComponent(JSON.stringify({
         locations: [{lon:lo1,lat:la1},{lon:lo2,lat:la2}],
         costing: 'bicycle',
         costing_options: { bicycle: { use_roads: useRoads, bicycle_type: 'City', use_hills: 0.3 } },
         directions_options: { language: 'en-GB', units: 'kilometers' }
-      })
-    });
+      })));
     if (!res.ok) throw new Error(`Valhalla ${res.status}`);
     const data = await res.json();
     const trip = data.trip;
@@ -573,16 +570,12 @@ async function fetchCycleRoute(la1, lo1, la2, lo2) {
 async function fetchWalkRoute(la1, lo1, la2, lo2) {
   // Valhalla pedestrian — much better London footpath/park/shortcut knowledge than OSRM foot
   try {
-    const res = await fetch(VALHALLA, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
+    const res = await fetch(VALHALLA + '?json=' + encodeURIComponent(JSON.stringify({
         locations: [{lon:lo1,lat:la1},{lon:lo2,lat:la2}],
         costing: 'pedestrian',
         costing_options: { pedestrian: { walking_speed: 4.5, use_ferry: 0 } },
         directions_options: { language: 'en-GB', units: 'kilometers' }
-      })
-    });
+      })));
     if (!res.ok) throw new Error(`Valhalla pedestrian ${res.status}`);
     const data = await res.json();
     const trip = data.trip;
@@ -605,7 +598,8 @@ async function fetchWalkRoute(la1, lo1, la2, lo2) {
 }
 
 async function fetchOSRMRoute(la1, lo1, la2, lo2, profile) {
-  const url = `${OSRM}/${profile}/${lo1},${la1};${lo2},${la2}?overview=full&steps=true&geometries=geojson`;
+  const base = profile === 'foot' ? OSRM_FOOT : OSRM_BIKE;
+  const url = `${base}/${lo1},${la1};${lo2},${la2}?overview=full&steps=true&geometries=geojson`;
   const res  = await fetch(url);
   const data = await res.json();
   if (data.code !== 'Ok' || !data.routes.length) throw new Error('No route');
