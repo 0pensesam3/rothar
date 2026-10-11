@@ -101,6 +101,16 @@ window.L = (() => {
                      'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, ['*', 0.4, ['coalesce', ['get', 'render_height'], 8]]],
                      'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0] } }, firstLabel);
         } catch (e) { console.warn('3D buildings unavailable:', e.message); }
+        // Warm, calm palette: tint what's there, red route stays the strongest colour
+        const tint = { background: ['background-color', '#f6f4ef'], park: ['fill-color', '#dcebd2'],
+          landcover_wood: ['fill-color', '#d3e6c8'], landuse_residential: ['fill-color', '#f1eee8'],
+          water: ['fill-color', '#cfe2ef'], waterway: ['line-color', '#bcd7ea'], building: ['fill-color', '#ebe5db'],
+          highway_major_inner: ['line-color', '#fff4d8'], highway_major_subtle: ['line-color', '#fff4d8'],
+          highway_motorway_inner: ['line-color', '#ffe9b8'], highway_motorway_subtle: ['line-color', '#ffe9b8'],
+          highway_minor: ['line-color', '#ffffff'] };
+        Object.entries(tint).forEach(([id, [k, v]]) => { try { if (this._ml.getLayer(id)) this._ml.setPaintProperty(id, k, v); } catch (e) {} });
+        try { this._ml.setPaintProperty('building-3d', 'fill-extrusion-color', '#e8e1d5');
+              this._ml.setPaintProperty('building-3d', 'fill-extrusion-opacity', 0.55); } catch (e) {}
         this._ready = true; this._q.splice(0).forEach(f => f());
       });
       if (o.zoomControl !== false) this._ml.addControl(new ML.NavigationControl({ visualizePitch: true }), 'top-left');
@@ -358,7 +368,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 23:55</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 00:45</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.</div>
     <div id="history-list"></div>
@@ -544,13 +554,124 @@ function makeAltStationIcon(bikes, ebikes) {
   });
 }
 
-function makeGPSIcon() {
-  return L.divIcon({
-    className: '',
-    html: `<div class="gps-outer"><div class="gps-ring"></div><div class="gps-inner"></div></div>`,
-    iconSize: [24,24], iconAnchor: [12,12]
+const RIDER_HTML = `<div style="position:relative;width:46px;height:58px;">
+  <div style="position:absolute;left:9px;bottom:0;width:28px;height:9px;border-radius:50%;background:rgba(0,0,0,0.28);filter:blur(2px);"></div>
+  <img src="rider.png" alt="" style="position:absolute;left:0;top:6px;width:46px;height:40px;filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) drop-shadow(0 3px 3px rgba(0,0,0,0.25));"/>
+</div>`;
+function makeRiderIcon() { return L.divIcon({ className: '', html: RIDER_HTML, iconSize: [46,58], iconAnchor: [23,58] }); }
+
+// ─── 3D rider (three.js inside MapLibre), shown in the navigation follow view ─
+const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.min.js';
+const RIDER_METRES = 22;          // model height on the map; larger than life so you can see her
+let threeLoading = null;
+function loadThree() {
+  if (window.THREE) return Promise.resolve(window.THREE);
+  return threeLoading ||= new Promise((ok, bad) => {
+    const s = document.createElement('script'); s.src = THREE_URL;
+    s.onload = () => ok(window.THREE); s.onerror = () => bad(new Error('three.js failed to load'));
+    document.head.appendChild(s);
   });
 }
+
+// Built from simple shapes after the logo: Y is up, she rides towards +X, 1 unit ≈ wheel-to-wheel
+function buildRiderModel(THREE) {
+  const red = new THREE.MeshStandardMaterial({ color: 0xe31837, roughness: 0.55, metalness: 0.05 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0xa30f26, roughness: 0.6 });
+  const g = new THREE.Group();
+  const V = (x, y, z = 0) => new THREE.Vector3(x, y, z);
+  const rod = (a, b, r, mat = red) => {
+    const len = a.distanceTo(b), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
+    g.add(m); return m;
+  };
+  const ball = (p, r, mat = red) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mat); m.position.copy(p); g.add(m); return m; };
+  // wheels
+  [-0.42, 0.42].forEach(x => { const w = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.045, 10, 36), dark); w.position.set(x, 0.3, 0); g.add(w);
+                               ball(V(x, 0.3, 0), 0.04, dark); });
+  // frame
+  const rear = V(-0.42, 0.3), bb = V(0.02, 0.3), seat = V(-0.12, 0.7), head = V(0.3, 0.72), front = V(0.42, 0.3);
+  rod(rear, bb, 0.03); rod(rear, seat, 0.03); rod(bb, seat, 0.035); rod(seat, head, 0.035); rod(bb, head, 0.035); rod(head, front, 0.03);
+  rod(head, V(0.27, 0.86), 0.025); rod(V(0.27, 0.86, -0.12), V(0.27, 0.86, 0.12), 0.022);       // stem + handlebar
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.08), dark); saddle.position.set(-0.14, 0.74, 0); g.add(saddle);
+  // rider
+  const hip = V(-0.1, 0.8), shoulder = V(0.06, 1.2), neck = V(0.08, 1.27);
+  rod(hip, shoulder, 0.085); ball(hip, 0.085); ball(shoulder, 0.08);
+  ball(V(0.11, 1.38), 0.11);                                                                       // head
+  rod(V(0.02, 1.46), V(-0.1, 1.44), 0.035); ball(V(-0.14, 1.4), 0.05);                              // ponytail
+  rod(neck, V(0.08, 1.31), 0.04);
+  [-0.08, 0.08].forEach((z, i) => {
+    const sh = V(0.06, 1.18, z), hand = V(0.27, 0.87, z * 1.4);
+    rod(sh, hand, 0.035); ball(hand, 0.04);                                                         // arms
+    const hp = V(-0.1, 0.8, z), knee = i ? V(0.14, 0.62, z) : V(0.08, 0.52, z), foot = i ? V(0.06, 0.36, z) : V(-0.02, 0.22, z);
+    rod(hp, knee, 0.055); ball(knee, 0.055); rod(knee, foot, 0.045); ball(foot, 0.045);               // legs, pedalling
+  });
+  // soft shadow on the ground
+  const sh = new THREE.Mesh(new THREE.CircleGeometry(0.6, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18 }));
+  sh.rotation.x = -Math.PI / 2; sh.scale.set(1.3, 0.5, 1); sh.position.y = 0.005; g.add(sh);
+  g.position.x = 0;                       // centred on the bottom bracket, roughly her middle
+  return g;
+}
+
+function makeRiderLayer(THREE) {
+  return {
+    id: 'rider-3d', type: 'custom', renderingMode: '3d', pos: null, heading: 0, visible: true,
+    onAdd(m, gl) {
+      this.map = m; this.camera = new THREE.Camera(); this.scene = new THREE.Scene();
+      this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(0.6, 1.5, 0.8); this.scene.add(sun);
+      this.model = buildRiderModel(THREE); this.scene.add(this.model);
+      this.renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+      this.renderer.autoClear = false;
+    },
+    render(gl, matrix) {
+      if (!this.pos || !this.visible) return;
+      const mc = maplibregl.MercatorCoordinate.fromLngLat(this.pos, 0);
+      const s = mc.meterInMercatorCoordinateUnits() * RIDER_METRES;
+      const rx = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+      const ry = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 1, 0), (this.heading - 90) * Math.PI / 180);
+      const l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(s, -s, s)).multiply(rx).multiply(ry);
+      this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(l);
+      this.renderer.resetState();
+      this.renderer.render(this.scene, this.camera);
+    }
+  };
+}
+
+// Which way she points: your heading if known, else the direction of the route ahead
+function riderHeading() {
+  if (NAV.heading != null) return NAV.heading;
+  const a = NAV.userLat !== undefined && aheadPoint(NAV.userLat, NAV.userLon);
+  return a ? bearingTo(NAV.userLat, NAV.userLon, a.lat, a.lon) : 0;
+}
+
+function syncRider() {
+  const L3 = NAV.rider3d; if (!L3 || NAV.userLat === undefined) return;
+  L3.pos = [NAV.userLon, NAV.userLat]; L3.heading = riderHeading();
+  L3.visible = NAV.view === 'follow';
+  const el = NAV.riderMarker?.getElement(); if (el) el.style.visibility = L3.visible ? 'hidden' : 'visible';
+  map._ml.triggerRepaint();
+}
+
+async function startRider3d() {
+  try {
+    const THREE = await loadThree();
+    if (!NAV.active || NAV.rider3d) return;
+    map._whenStyle(() => {
+      if (!NAV.active || map._ml.getLayer('rider-3d')) return;
+      NAV.rider3d = makeRiderLayer(THREE);
+      map._ml.addLayer(NAV.rider3d);
+      syncRider();
+    });
+  } catch (e) { console.warn(e.message); }      // flat rider stays as the fallback
+}
+function stopRider3d() {
+  try { if (map._ml.getLayer('rider-3d')) map._ml.removeLayer('rider-3d'); } catch (e) {}
+  NAV.rider3d = null;
+}
+
+// Your GPS location on the planning screen: the rider too
+function makeGPSIcon() { return makeRiderIcon(); }
 
 // Typed start address — red pin
 function makeTypedStartIcon() {
@@ -1176,6 +1297,7 @@ function updateHeading() {
   NAV.heading = NAV.gpsHeading ?? NAV.compass ?? null;
   if (NAV.heading == null) { document.getElementById('nav-facing').style.display = 'none'; return; }
   NAV.userMarker?.setRotation(NAV.heading);
+  syncRider();
 
   // Facing check
   const el = document.getElementById('nav-facing');
@@ -1190,7 +1312,8 @@ function updateHeading() {
   // Heading-up camera: rotate at most ~5x a second, ignore tiny jitter
   if (NAV.view === 'follow' && map._ml) {
     const now = Date.now();
-    if (now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
+    // don't interrupt a camera move in progress (that cancels the zoom-in); it already carries the heading
+    if (!map._ml.isEasing() && now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
       NAV.lastRotate = now;
       map._ml.rotateTo(NAV.heading, { duration: 200 });
     }
@@ -1202,9 +1325,10 @@ function navCamera(lat, lon) {
   const ml = map._ml; if (!ml) return;
   const h = ml.getContainer().clientHeight;
   const o = { center: [lon, lat], duration: NAV.zoomed ? 800 : 1200 };
-  if (NAV.view === 'follow') Object.assign(o, { pitch: 50, zoom: 17, bearing: NAV.heading ?? ml.getBearing(), padding: { top: h * 0.45, bottom: 0, left: 0, right: 0 } });
+  if (NAV.view === 'follow') Object.assign(o, { pitch: 50, zoom: 17.6, bearing: NAV.heading ?? ml.getBearing(), padding: { top: h * 0.45, bottom: 0, left: 0, right: 0 } });
   else Object.assign(o, { pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, ...(NAV.zoomed ? {} : { zoom: 16 }) });
   ml.easeTo(o);
+  ml.once('moveend', () => { NAV.lastRotate = 0; updateHeading(); });   // catch up on any turn skipped mid-move
   NAV.zoomed = true;
 }
 
@@ -1212,6 +1336,7 @@ function toggleNavView() {
   NAV.view = NAV.view === 'follow' ? 'north' : 'follow';
   document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🧭 North up' : '🧭 Follow';
   if (NAV.userLat !== undefined) navCamera(NAV.userLat, NAV.userLon);
+  syncRider();
 }
 
 function resetCamera() {
@@ -1308,15 +1433,18 @@ function onNavPosition(pos) {
   const {latitude:lat, longitude:lon} = pos.coords;
   NAV.userLat = lat; NAV.userLon = lon;
   // Blue dot with a beam showing which way you're facing
-  const dotHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs><path d="M24 24 L12 2 A24 24 0 0 1 36 2 Z" fill="url(#beam)"/><circle cx="24" cy="24" r="8" fill="#1d4ed8" stroke="white" stroke-width="3"/></svg>`;
+  const dotHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs><path d="M24 24 L12 2 A24 24 0 0 1 36 2 Z" fill="url(#beam)"/></svg>`;
   const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[48,48],iconAnchor:[24,24]});
   if (NAV.userMarker) NAV.userMarker.setLatLng([lat,lon]);
   else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000,rotationAlignment:'map'}).addTo(map);
+  if (NAV.riderMarker) NAV.riderMarker.setLatLng([lat,lon]);
+  else NAV.riderMarker = L.marker([lat,lon],{icon:makeRiderIcon(),zIndexOffset:1001}).addTo(map);
   // Moving fast (cycling): GPS course is steadier than the compass
   const {heading, speed} = pos.coords;
   NAV.gpsHeading = (speed != null && speed > 2 && heading != null && !isNaN(heading)) ? heading : null;
   updateHeading();
   navCamera(lat, lon);
+  syncRider();
 
 
   // Auto-advance steps
@@ -1349,6 +1477,7 @@ function startNavigation() {
   NAV.userLat = NAV.userLon = undefined; NAV.view = 'follow'; NAV.gpsHeading = null;
   document.getElementById('nav-view').textContent = '🧭 North up';
   requestCompass();
+  startRider3d();
   requestWakeLock();
   renderStations();
   logJourneyStart();
@@ -1370,6 +1499,7 @@ function stopNavigation() {
   if (NAV.watchId !== null)        { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
   if (NAV.proximityRefreshId)      { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; }
   if (NAV.userMarker)              { map.removeLayer(NAV.userMarker); NAV.userMarker=null; }
+  if (NAV.riderMarker)             { map.removeLayer(NAV.riderMarker); NAV.riderMarker=null; }
   document.getElementById('search-panel').classList.remove('nav-active');
   document.getElementById('journey-panel').classList.remove('nav-active');
   document.getElementById('nav-overlay').classList.remove('active');
@@ -1378,7 +1508,7 @@ function stopNavigation() {
   clearNavAlternatives();
   logJourneyEnd(NAV.arrived === true);
   releaseWakeLock();
-  stopCompass(); resetCamera();
+  stopCompass(); resetCamera(); stopRider3d();
   document.getElementById('nav-facing').style.display = 'none';
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
