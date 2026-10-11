@@ -90,7 +90,7 @@ window.L = (() => {
   class MapW {
     constructor(id, o = {}) {
       this._ml = new ML.Map({ container: id, style: STYLE, center: [-0.118, 51.506], zoom: 12,
-                              attributionControl: { compact: true }, maxPitch: 70 });
+                              attributionControl: { compact: true, customAttribution: 'Powered by TfL Open Data' }, maxPitch: 70 });
       this._layers = new Set(); this._ready = false; this._q = [];
       this._ml.on('load', () => {
         // Soft 3D buildings: low and pale, under the street labels; route lines are added later so sit on top
@@ -186,6 +186,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 .map-legend { position: absolute; bottom: 10px; left: 10px; background: white; border-radius: 8px; padding: 8px 10px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
 .leg-row { display: flex; align-items: center; gap: 5px; }
 .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.leg-tfl { font-size: 9.5px; color: #777; border-top: 1px solid #eee; margin-top: 3px; padding-top: 3px; }
 
 /* ── GPS pulsing pin ── */
 .gps-outer { width: 24px; height: 24px; position: relative; display: flex; align-items: center; justify-content: center; }
@@ -368,9 +369,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 00:45</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 01:00</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
-    <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.</div>
+    <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
+      Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
+      Rothar counts anonymous app usage (for example "navigation started") to improve the app. No locations, addresses, searches or personal data are collected.</div>
     <div id="history-list"></div>
   </div>
 
@@ -379,6 +382,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     <div class="leg-row"><div class="leg-dot" style="background:#2563eb"></div> E-bike only</div>
     <div class="leg-row"><div class="leg-dot" style="background:#d97706"></div> Low (1–2)</div>
     <div class="leg-row"><div class="leg-dot" style="background:#dc2626"></div> Empty</div>
+    <div class="leg-tfl">Powered by TfL Open Data</div>
   </div>
 </div>
 
@@ -874,6 +878,7 @@ function walkIsFaster(pickup, dropoff) {
 }
 
 function showWalkBanner(dist, secs) {
+  track('walk-suggested', 'Walk suggested instead of bike');
   document.getElementById('walk-banner-text').textContent =
     `🚶 ${fmtDist(dist)} on foot, about ${fmtTime(secs)}. The bike wouldn't save you a minute.`;
   document.getElementById('walk-banner').classList.add('visible');
@@ -971,6 +976,7 @@ async function planJourney(silent=false) {
   ]), {padding:[50,50]});
 
   renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist);
+  if (!silent) track('journey-planned', 'Journey planned');
   toast('');
 }
 
@@ -1073,6 +1079,7 @@ function showAvailAlert(station, type) {
     `<span style="color:${lh.color};font-weight:500;">📊 ${lh.text}</span><br><span style="color:#6b7280;">Estimated wait if you stay: ${lh.wait}</span>`;
 
   pendingAlert = { station, type };
+  track(type === 'bike' ? 'alert-low-bikes' : 'alert-low-docks', type === 'bike' ? 'Low bikes alert' : 'Low docks alert');
   document.getElementById('avail-popup').classList.add('visible');
 }
 
@@ -1108,7 +1115,7 @@ async function rerouteStation() {
     S.cycle   = cy.status === 'fulfilled' ? cy.value : null;
     S.walkOut = wo.status === 'fulfilled' ? wo.value : null;
     NAV.steps = buildNavSteps(null, S.cycle, S.walkOut, S.pickup, S.dropoff, 'cycle');
-    toast(`Return rerouted to ${newDrop.commonName}`,3500);
+    toast(`Return rerouted to ${newDrop.commonName}`,3500); track('reroute-dock', 'Rerouted: full dock');
   } else {
     const newPickup = bestPickup(here.lat, here.lon, S.dropoff.lat, S.dropoff.lon, S.pickup.id, LOW_AVAIL).station
                    || bestPickup(here.lat, here.lon, S.dropoff.lat, S.dropoff.lon, S.pickup.id, 1).station;
@@ -1121,7 +1128,7 @@ async function rerouteStation() {
     S.walkIn = wi.status === 'fulfilled' ? wi.value : null;
     S.cycle  = cy.status === 'fulfilled' ? cy.value : null;
     NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff, 'walk');
-    toast(`Pick-up rerouted to ${newPickup.commonName}`,3500);
+    toast(`Pick-up rerouted to ${newPickup.commonName}`,3500); track('reroute-bike', 'Rerouted: no bikes');
   }
 
   NAV.current = 0;
@@ -1472,6 +1479,7 @@ function onNavPosition(pos) {
 
 function startNavigation() {
   if (!S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
+  track('nav-start', 'Navigation started');
   NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
   NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null; NAV.zoomed = false;
   NAV.userLat = NAV.userLon = undefined; NAV.view = 'follow'; NAV.gpsHeading = null;
@@ -1506,6 +1514,7 @@ function stopNavigation() {
   document.getElementById('map-legend').style.display = '';
   hideAvailAlert();
   clearNavAlternatives();
+  if (NAV.historyId) track(NAV.arrived === true ? 'nav-completed' : 'nav-ended-early', NAV.arrived === true ? 'Navigation completed' : 'Navigation ended early');
   logJourneyEnd(NAV.arrived === true);
   releaseWakeLock();
   stopCompass(); resetCamera(); stopRider3d();
@@ -1513,6 +1522,19 @@ function stopNavigation() {
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
 }
+
+// ─── Anonymous usage counts (GoatCounter) ─────────────────────────────────────
+// Only the action name is sent, e.g. "nav-start". Nothing about where you are or what you searched.
+function track(name, title) {
+  try { window.goatcounter?.count?.({ path: 'event/' + name, title: title || name, event: true }); } catch (e) {}
+}
+let errorsSent = 0;
+function trackError(msg) {
+  if (errorsSent++ >= 5) return;                       // a few per session is enough to spot a problem
+  track('error/' + String(msg || 'unknown').replace(/\s+/g, ' ').slice(0, 80), 'Error');
+}
+window.addEventListener('error', e => trackError(e.message));
+window.addEventListener('unhandledrejection', e => trackError(e.reason?.message || e.reason));
 
 // ─── Activity (local journey log) ─────────────────────────────────────────────
 const HISTORY_KEY = 'sc-history-v1';
@@ -1723,6 +1745,7 @@ function bindAutocomplete(inputId, listId, onSelect) {
       e.preventDefault();
       const it = items[parseInt(el.dataset.i)];
       hide(); onSelect(it.lat, it.lon, it.main);
+      track(it.sub.startsWith('Street level') ? 'search/street-level' : /^\d/.test(it.main) ? 'search/address' : 'search/place', 'Search result picked');
     }));
   };
   input.addEventListener('input', () => {
@@ -1772,7 +1795,7 @@ document.getElementById('refresh-btn').addEventListener('click', () => loadStati
 document.getElementById('start-nav-btn').addEventListener('click', startNavigation);
 document.getElementById('nav-stop').addEventListener('click', stopNavigation);
 document.getElementById('nav-view').addEventListener('click', toggleNavView);
-document.getElementById('history-btn').addEventListener('click', () => { renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
+document.getElementById('history-btn').addEventListener('click', () => { track('activity-opened', 'Activity opened'); renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
 document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
 document.getElementById('walk-anyway-btn').addEventListener('click', () => {
   S.forceShowBike = true; hideWalkBanner(); planJourney();
@@ -1792,6 +1815,7 @@ document.querySelectorAll('#route-row .pill-btn').forEach(btn => btn.addEventLis
   document.querySelectorAll('#route-row .pill-btn').forEach(b => b.classList.remove('active-blue'));
   btn.classList.add('active-blue');
   S.routeType = btn.dataset.rt;
+  track('route-type/' + S.routeType, 'Route type: ' + S.routeType);
   if (S.start && S.end) planJourney();
 }));
 
@@ -1812,5 +1836,7 @@ setInterval(updateBadge, 15000);
 loadStations();
 setTimeout(requestLocation, 600);
 </script>
+<!-- Anonymous usage counts: no cookies, no personal data. Dashboard visible only to the site owner. -->
+<script data-goatcounter="https://rothar.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>
