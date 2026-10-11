@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Rothar</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rothar">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#e31837">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f4f0; overflow: hidden; }
+
+/* ── Header ── */
+#header { background: #e31837; color: white; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+#header h1 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+#refresh-badge { font-size: 11px; opacity: 0.8; white-space: nowrap; }
+#refresh-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+#refresh-btn.spinning #refresh-icon { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Search panel ── */
+#search-panel { background: white; padding: 10px 12px; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; }
+#search-panel.nav-active { display: none; }
+.input-row { display: flex; gap: 6px; align-items: center; }
+.row-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; opacity: 0.7; }
+.input-wrap { flex: 1; position: relative; }
+.search-input { width: 100%; padding: 9px 28px 9px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; background: white; color: #111; transition: border-color 0.15s; }
+.search-input:focus { border-color: #e31837; }
+.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; display: none; line-height: 1; padding: 0; }
+.clear-btn.visible { display: block; }
+.loc-btn { background: white; color: #e31837; border: 1.5px solid #e31837; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0; font-weight: 500; }
+#filter-row, #route-row { display: flex; gap: 6px; }
+.pill-btn { flex: 1; padding: 6px 4px; border: 1.5px solid #ddd; border-radius: 20px; background: white; font-size: 11px; cursor: pointer; color: #777; white-space: nowrap; font-family: inherit; text-align: center; transition: all 0.15s; }
+.pill-btn.active-red  { background: #e31837; border-color: #e31837; color: white; font-weight: 600; }
+.pill-btn.active-blue { background: #2563eb; border-color: #2563eb; color: white; font-weight: 600; }
+.pill-btn:hover:not(.active-red):not(.active-blue) { border-color: #999; color: #333; }
+
+/* ── Autocomplete ── */
+.autocomplete-list { position: absolute; top: calc(100% + 2px); left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 8px; z-index: 3000; box-shadow: 0 6px 16px rgba(0,0,0,0.12); max-height: 220px; overflow-y: auto; display: none; }
+.ac-item { padding: 9px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f5f5f5; display: flex; align-items: flex-start; gap: 8px; }
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover { background: #fef2f2; }
+.ac-main { font-size: 13px; color: #111; }
+.ac-sub  { font-size: 11px; color: #888; margin-top: 1px; }
+
+/* ── Map ── */
+#map-wrap { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+#map { height: 100%; width: 100%; }
+.leaflet-tile-pane { filter: grayscale(1) brightness(1.06) contrast(0.9); }
+#toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); color: white; padding: 8px 16px; border-radius: 20px; font-size: 13px; z-index: 2000; display: none; white-space: nowrap; pointer-events: none; max-width: 90%; text-align: center; }
+.map-legend { position: absolute; bottom: 10px; left: 10px; background: white; border-radius: 8px; padding: 8px 10px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
+.leg-row { display: flex; align-items: center; gap: 5px; }
+.leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── GPS pulsing pin ── */
+.gps-outer { width: 24px; height: 24px; position: relative; display: flex; align-items: center; justify-content: center; }
+.gps-inner { width: 13px; height: 13px; background: #1d4ed8; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(29,78,216,0.5); position: relative; z-index: 1; }
+.gps-ring  { position: absolute; top: 0; left: 0; width: 24px; height: 24px; border-radius: 50%; background: rgba(29,78,216,0.22); animation: gps-pulse 2s ease-out infinite; }
+@keyframes gps-pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+
+/* ── Nav overlay ── */
+#nav-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1500; display: none; flex-direction: column; pointer-events: none; }
+#nav-overlay.active { display: flex; }
+#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; }
+#nav-card.walk    { background: #1e1b4b; }
+#nav-card.cycle   { background: #7f1d1d; }
+#nav-card.pickup  { background: #14532d; }
+#nav-card.dropoff { background: #4a1d96; }
+#nav-top { display: flex; align-items: center; gap: 12px; }
+#nav-maneuver { font-size: 36px; flex-shrink: 0; width: 44px; text-align: center; line-height: 1; }
+#nav-text { flex: 1; min-width: 0; }
+#nav-primary { font-size: 17px; font-weight: 700; line-height: 1.2; }
+#nav-road    { font-size: 12px; opacity: 0.75; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#nav-dist    { font-size: 26px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+#nav-bar { height: 3px; background: rgba(255,255,255,0.2); margin-top: 10px; border-radius: 2px; }
+#nav-bar-fill { height: 100%; background: white; border-radius: 2px; transition: width 0.5s; }
+#nav-meta { background: rgba(0,0,0,0.6); padding: 7px 14px; display: flex; align-items: center; justify-content: space-between; pointer-events: auto; }
+#nav-step-label { font-size: 11px; color: rgba(255,255,255,0.7); }
+#nav-eta-label  { font-size: 11px; color: rgba(255,255,255,0.7); }
+#nav-stop { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+
+/* ── Walk suggestion banner ── */
+#walk-banner { display: none; background: #f0fdf4; border-top: 2px solid #16a34a; padding: 12px 16px; flex-shrink: 0; align-items: center; gap: 10px; }
+#walk-banner.visible { display: flex; }
+#walk-banner p { flex: 1; font-size: 13px; color: #14532d; line-height: 1.4; }
+#walk-anyway-btn { background: white; border: 1.5px solid #16a34a; color: #166534; border-radius: 8px; padding: 7px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; font-family: inherit; font-weight: 500; }
+
+/* ── Availability popup ── */
+#avail-popup { position: absolute; bottom: 16px; left: 12px; right: 12px; background: white; border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
+#avail-popup.visible { display: block; }
+#avail-popup-head { padding: 12px 14px 8px; background: #fffbeb; border-bottom: 1px solid #fde68a; display: flex; align-items: center; gap: 8px; }
+#avail-popup-title { font-size: 14px; font-weight: 600; color: #78350f; flex: 1; }
+#avail-popup-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #92400e; line-height: 1; }
+#avail-popup-body { padding: 10px 14px 4px; font-size: 13px; color: #374151; line-height: 1.5; }
+#avail-popup-likelihood { padding: 6px 14px 10px; font-size: 12px; font-weight: 500; }
+#avail-popup-actions { display: flex; gap: 8px; padding: 0 14px 14px; }
+.avail-act { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; }
+#avail-wait   { background: #f3f4f6; color: #111; }
+#avail-reroute { background: #e31837; color: white; }
+
+/* ── Activity panel ── */
+#history-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 8px; height: 34px; padding: 0 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#history-panel { position: fixed; inset: 0; background: #f5f4f0; z-index: 5000; display: none; flex-direction: column; padding-top: env(safe-area-inset-top); }
+#history-panel.visible { display: flex; }
+#history-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: white; border-bottom: 1px solid #e5e5e5; }
+#history-head h2 { font-size: 15px; font-weight: 600; }
+#history-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #666; line-height: 1; }
+#history-totals { display: flex; gap: 8px; padding: 12px 14px 4px; }
+.hist-total { flex: 1; background: white; border-radius: 10px; padding: 10px 12px; }
+.hist-total b { display: block; font-size: 18px; color: #e31837; }
+.hist-total span { font-size: 11px; color: #777; }
+#history-list { flex: 1; overflow-y: auto; padding: 8px 14px 16px; }
+.hist-item { background: white; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; color: #222; }
+.hist-route { font-weight: 600; }
+.hist-meta { font-size: 11px; color: #777; margin-top: 3px; line-height: 1.5; }
+.hist-empty { font-size: 13px; color: #777; text-align: center; padding: 30px 10px; line-height: 1.5; }
+.hist-note { font-size: 11px; color: #999; padding: 0 14px 12px; }
+
+/* ── Start button + journey panel ── */
+#start-nav-btn { display: none; width: calc(100% - 28px); margin: 10px 14px; padding: 12px; background: #e31837; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#start-nav-btn.visible { display: block; }
+#journey-panel { background: white; border-top: 2px solid #e31837; max-height: 210px; overflow-y: auto; flex-shrink: 0; display: none; }
+#journey-panel.visible { display: block; }
+#journey-panel.nav-active { display: none; }
+#journey-summary { padding: 10px 14px; background: #fef2f2; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #fecaca; position: sticky; top: 0; }
+.sum-chip { font-size: 12px; background: white; border-radius: 6px; padding: 3px 8px; color: #374151; border: 1px solid #f0c0c0; white-space: nowrap; }
+.sum-chip strong { color: #e31837; }
+#steps-list { padding: 4px 0 8px; }
+.step-header { padding: 8px 14px 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #e31837; display: flex; align-items: center; gap: 6px; }
+.step-header-line { flex: 1; height: 1px; background: #fecaca; }
+.step-row { display: flex; gap: 10px; padding: 4px 14px; font-size: 13px; color: #333; align-items: baseline; }
+.step-ic { width: 18px; text-align: center; flex-shrink: 0; }
+.step-txt { flex: 1; line-height: 1.45; }
+.step-d { font-size: 11px; color: #999; white-space: nowrap; }
+.avail-row { display: flex; gap: 5px; padding: 3px 14px 5px; flex-wrap: wrap; }
+.avail-chip { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.chip-std   { background: #dcfce7; color: #166534; }
+.chip-ebike { background: #dbeafe; color: #1e40af; }
+.chip-none  { background: #fee2e2; color: #991b1b; }
+.leaflet-popup-content { margin: 8px 10px; }
+.popup-name { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.popup-avail { display: flex; gap: 4px; flex-wrap: wrap; }
+.p-chip { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+.route-alt-ring { width:22px;height:22px;border-radius:50%;border:3px solid #f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.3);display:flex;align-items:center;justify-content:center;background:white; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 0 0-1-1h-4l-3 7h10l-2-6z"/><path d="M5.5 14 9 6"/></svg>
+    Rothar
+  </h1>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="refresh-badge">Loading…</span>
+    <button id="history-btn">Activity</button>
+    <button id="refresh-btn">
+      <svg id="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+  </div>
+</div>
+
+<div id="search-panel">
+  <div class="input-row">
+    <span class="row-icon">●</span>
+    <div class="input-wrap">
+      <input id="from-input" class="search-input" type="text" placeholder="Start — tap 📡 or type an address" autocomplete="off"/>
+      <button class="clear-btn" id="from-clear">×</button>
+      <div class="autocomplete-list" id="from-ac"></div>
+    </div>
+    <button class="loc-btn" id="loc-btn">📡 Me</button>
+  </div>
+  <div class="input-row">
+    <span class="row-icon">▲</span>
+    <div class="input-wrap">
+      <input id="to-input" class="search-input" type="text" placeholder="Where are you going?" autocomplete="off"/>
+      <button class="clear-btn" id="to-clear">×</button>
+      <div class="autocomplete-list" id="to-ac"></div>
+    </div>
+  </div>
+  <div id="filter-row">
+    <button class="pill-btn active-red" data-filter="any">🚲 Any</button>
+    <button class="pill-btn" data-filter="standard">🚲 Standard</button>
+    <button class="pill-btn" data-filter="ebike">⚡ E-bike</button>
+  </div>
+  <div id="route-row">
+    <button class="pill-btn active-blue" data-rt="balanced">⚖️ Balanced</button>
+    <button class="pill-btn" data-rt="fastest">⚡ Fastest</button>
+    <button class="pill-btn" data-rt="quietest">🌿 Bike lanes</button>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <div id="map"></div>
+  <div id="toast"></div>
+
+  <div id="nav-overlay">
+    <div id="nav-card" class="walk">
+      <div id="nav-top">
+        <div id="nav-maneuver">↑</div>
+        <div id="nav-text">
+          <div id="nav-primary">Getting ready…</div>
+          <div id="nav-road"></div>
+        </div>
+        <div id="nav-dist">–</div>
+      </div>
+      <div id="nav-bar"><div id="nav-bar-fill" style="width:0%"></div></div>
+    </div>
+    <div id="nav-meta">
+      <span id="nav-step-label">Step 1</span>
+      <span id="nav-eta-label">Calculating…</span>
+      <button id="nav-stop">✕ End</button>
+    </div>
+  </div>
+
+  <div id="avail-popup">
+    <div id="avail-popup-head">
+      <div id="avail-popup-title">⚠ Low availability</div>
+      <button id="avail-popup-close">×</button>
+    </div>
+    <div id="avail-popup-body"></div>
+    <div id="avail-popup-likelihood"></div>
+    <div id="avail-popup-actions">
+      <button class="avail-act" id="avail-wait">⏱ Wait here</button>
+      <button class="avail-act" id="avail-reroute">🔄 Reroute</button>
+    </div>
+  </div>
+
+  <div id="history-panel">
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 21:40</span></h2><button id="history-close">×</button></div>
+    <div id="history-totals"></div>
+    <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.</div>
+    <div id="history-list"></div>
+  </div>
+
+  <div class="map-legend" id="map-legend">
+    <div class="leg-row"><div class="leg-dot" style="background:#16a34a"></div> Standard</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#2563eb"></div> E-bike only</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#d97706"></div> Low (1–2)</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#dc2626"></div> Empty</div>
+  </div>
+</div>
+
+<div id="walk-banner">
+  <p id="walk-banner-text">🚶 Short walk — no bike needed!</p>
+  <button id="walk-anyway-btn">Bike anyway</button>
+</div>
+
+<div id="journey-panel">
+  <button id="start-nav-btn">▶  Start navigation</button>
+  <div id="journey-summary"></div>
+  <div id="steps-list"></div>
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TFL        = 'https://api.tfl.gov.uk';
+const OSRM       = 'https://router.project-osrm.org/route/v1';
+const VALHALLA   = 'https://valhalla.openstreetmap.de/route';
+const NOMINATIM  = 'https://nominatim.openstreetmap.org';
+
+const STATION_RADIUS = 800;   // m — only render stations within this range when journey is set
+const WALK_ONLY_DIST = 750;   // m — recommend walking if destination this close
+const MIN_BIKE_SAVING = 60;   // s — only recommend walking if bike saves less than this
+const LOW_AVAIL      = 2;     // bikes/docks threshold for availability alerts
+const STEP_ADV_M     = 30;    // m — auto-advance nav step within this distance of maneuver
+const WALK_SPD       = 80;    // m/min (for station selection estimates only)
+const CYCLE_SPD      = 220;   // m/min
+const DOCK_OVERHEAD  = 90;    // s — releasing a bike at the dock plus docking it at the end
+const DETOUR         = 1.3;   // straight-line → street distance, for estimates only
+const PROXIMITY_SECS = 300;   // s — start watching a station when this close to it
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const S = {
+  stations: [], start: null, end: null,
+  pickup: null, dropoff: null,
+  walkIn: null, cycle: null, walkOut: null,
+  lastRefresh: null, journeyActive: false,
+  bikeFilter: 'any', routeType: 'balanced',
+  startIsGPS: false,
+  forceShowBike: false,  // set when user clicks "Bike anyway"
+};
+
+const NAV = {
+  active: false, steps: [], current: 0,
+  watchId: null, proximityRefreshId: null,
+  userMarker: null,
+};
+
+// Pending availability alert
+let pendingAlert = null;
+
+// ─── Map — OpenStreetMap tiles, greyed via CSS (CARTO now needs a key) ───────
+const map = L.map('map', {zoomControl: true}).setView([51.506, -0.118], 13);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+const stationLayer  = L.layerGroup().addTo(map);
+const routeLayer    = L.layerGroup().addTo(map);
+const navAltLayer   = L.layerGroup().addTo(map); // alt stations shown during navigation
+let markerStart = null, markerEnd = null, markerPickup = null, markerDropoff = null;
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLa = (lat2-lat1)*r, dLo = (lon2-lon1)*r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLo/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtDist(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(1)} km`; }
+function fmtTime(s) {
+  const m = Math.round(s/60);
+  return m < 1 ? '< 1 min' : m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${m%60}m`;
+}
+function prop(station, key) {
+  const p = (station.additionalProperties||[]).find(x => x.key === key);
+  return p ? (parseInt(p.value)||0) : 0;
+}
+
+let toastTimer;
+function toast(msg, dur=3000) {
+  const el = document.getElementById('toast');
+  clearTimeout(toastTimer);
+  if (!msg) { el.style.display='none'; return; }
+  el.textContent = msg; el.style.display = 'block';
+  if (dur > 0) toastTimer = setTimeout(() => el.style.display = 'none', dur);
+}
+
+// ─── Station loading ──────────────────────────────────────────────────────────
+async function loadStations(fromButton=false) {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  try {
+    const res = await fetch(`${TFL}/BikePoint/`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    S.stations = await res.json();
+    S.lastRefresh = Date.now();
+    renderStations();
+    updateBadge();
+    if (fromButton) toast('');
+    if (NAV.active) syncJourneyStations();
+    else if (S.start && S.end) planJourney(true);
+  } catch(e) {
+    toast(`⚠ Station data error: ${e.message}`, 6000);
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+function updateBadge() {
+  const el = document.getElementById('refresh-badge');
+  if (!S.lastRefresh) { el.textContent = 'Loading…'; return; }
+  const age = Math.round((Date.now()-S.lastRefresh)/1000);
+  const str = age < 10 ? 'just now' : age < 60 ? `${age}s ago` : `${Math.floor(age/60)}m ago`;
+  el.textContent = `${S.stations.length} · ${str}`;
+}
+
+// ─── Station rendering + filtering ───────────────────────────────────────────
+function matchesFilter(s, filter) {
+  const bikes = prop(s,'NbBikes'), ebikes = prop(s,'NbEBikes');
+  if (filter === 'standard') return (bikes-ebikes) > 0;
+  if (filter === 'ebike')    return ebikes > 0;
+  return bikes > 0;
+}
+
+// Only show stations near start/end — reduces visual clutter dramatically
+function isStationVisible(s) {
+  if (!S.start && !S.end) return true; // exploration mode — show all
+  const nearStart = S.start ? haversine(S.start.lat, S.start.lon, s.lat, s.lon) < STATION_RADIUS : false;
+  const nearEnd   = S.end   ? haversine(S.end.lat,   S.end.lon,   s.lat, s.lon) < STATION_RADIUS : false;
+  return nearStart || nearEnd;
+}
+
+function stationColor(bikes, ebikes) {
+  if (bikes === 0) return '#dc2626';
+  if (bikes <= 2)  return '#d97706';
+  if (bikes-ebikes === 0) return '#2563eb';
+  return '#16a34a';
+}
+
+function makeStationIcon(bikes, ebikes, sz=16) {
+  const col = stationColor(bikes, ebikes);
+  const hasE = ebikes > 0 && bikes > 0;
+  const lbl = bikes === 0 ? '' : bikes <= 9 ? String(bikes) : '9+';
+  const eTag = hasE ? `<span style="position:absolute;top:-5px;right:-6px;background:#1d4ed8;color:white;font-size:7px;font-weight:700;padding:0 2px;border-radius:3px;border:1px solid white;line-height:1.4">E</span>` : '';
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.55)}px;font-weight:700;color:white;position:relative;">${lbl}${eTag}</div>`,
+    iconSize: [sz,sz], iconAnchor: [sz/2,sz/2]
+  });
+}
+
+function makeNavPinIcon(emoji, color) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;">${emoji}</div>`,
+    iconSize: [28,28], iconAnchor: [14,14]
+  });
+}
+
+// GPS pulsing blue dot — distinct from typed address pin
+// Amber-ringed alternative station icon shown during navigation
+function makeAltStationIcon(bikes, ebikes) {
+  const col = stationColor(bikes, ebikes);
+  const lbl = bikes === 0 ? '' : bikes <= 9 ? String(bikes) : '9+';
+  return L.divIcon({
+    className: '',
+    html: `<div class="route-alt-ring"><div style="width:14px;height:14px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:white;">${lbl}</div></div>`,
+    iconSize: [22,22], iconAnchor: [11,11]
+  });
+}
+
+function makeGPSIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div class="gps-outer"><div class="gps-ring"></div><div class="gps-inner"></div></div>`,
+    iconSize: [24,24], iconAnchor: [12,12]
+  });
+}
+
+// Typed start address — red pin
+function makeTypedStartIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:#e31837;border:3px solid white;box-shadow:0 2px 6px rgba(227,24,55,0.4)"></div>`,
+    iconSize: [14,14], iconAnchor: [7,7]
+  });
+}
+
+function availabilityHTML(station) {
+  const bikes = prop(station,'NbBikes'), ebikes = prop(station,'NbEBikes');
+  const std = bikes-ebikes, empty = prop(station,'NbEmptyDocks');
+  const p = [];
+  if (std > 0)     p.push(`<span class="p-chip" style="background:#dcfce7;color:#166534;">🚲 ${std}</span>`);
+  if (ebikes > 0)  p.push(`<span class="p-chip" style="background:#dbeafe;color:#1e40af;">⚡ ${ebikes}</span>`);
+  if (bikes === 0) p.push(`<span class="p-chip" style="background:#fee2e2;color:#991b1b;">No bikes</span>`);
+  p.push(`<span class="p-chip" style="background:#f3f4f6;color:#374151;">🅿 ${empty}</span>`);
+  return p.join('');
+}
+
+function renderStations() {
+  stationLayer.clearLayers();
+  if (NAV.active) return; // nav view: only pickup, dropoff and amber alternatives
+  S.stations.forEach(s => {
+    if (!isStationVisible(s)) return; // ← hide irrelevant stations
+    const bikes = prop(s,'NbBikes'), ebikes = prop(s,'NbEBikes');
+    const opacity = matchesFilter(s, S.bikeFilter) ? 1 : 0.15;
+    L.marker([s.lat,s.lon], {icon: makeStationIcon(bikes,ebikes), opacity})
+      .bindPopup(`<div class="popup-name">${s.commonName}</div><div class="popup-avail">${availabilityHTML(s)}</div>`)
+      .addTo(stationLayer);
+  });
+}
+
+// ─── Station selection (total-time optimised) ─────────────────────────────────
+function bestPickup(sLat, sLon, dLat, dLon, excludeId, minCount=1) {
+  let best = null, bt = Infinity;
+  S.stations.forEach(s => {
+    if (s.id === excludeId) return;
+    if (!matchesFilter(s, S.bikeFilter)) return;
+    if (usableBikes(s) < minCount) return;
+    const t = haversine(sLat,sLon,s.lat,s.lon)/WALK_SPD + haversine(s.lat,s.lon,dLat,dLon)/CYCLE_SPD;
+    if (t < bt) { bt = t; best = s; }
+  });
+  return { station: best, dist: best ? haversine(sLat,sLon,best.lat,best.lon) : 0 };
+}
+
+function bestDropoff(pLat, pLon, eLat, eLon, excludeId, minCount=1) {
+  let best = null, bt = Infinity;
+  S.stations.forEach(s => {
+    if (s.id === excludeId) return;
+    if (prop(s,'NbEmptyDocks') < minCount) return;
+    const t = haversine(pLat,pLon,s.lat,s.lon)/CYCLE_SPD + haversine(s.lat,s.lon,eLat,eLon)/WALK_SPD;
+    if (t < bt) { bt = t; best = s; }
+  });
+  return { station: best, dist: best ? haversine(best.lat,best.lon,eLat,eLon) : 0 };
+}
+
+// ─── Routing — Valhalla for cycling (3 modes), TfL Journey API for walking ───
+
+function decodePolyline6(str) {
+  // Valhalla uses precision-6 encoded polyline
+  const factor = 1e6;
+  let lat = 0, lng = 0, idx = 0;
+  const coords = [];
+  while (idx < str.length) {
+    let b, shift = 0, result = 0;
+    do { b = str.charCodeAt(idx++)-63; result |= (b&0x1f)<<shift; shift += 5; } while (b >= 0x20);
+    lat += result&1 ? ~(result>>1) : result>>1;
+    shift = result = 0;
+    do { b = str.charCodeAt(idx++)-63; result |= (b&0x1f)<<shift; shift += 5; } while (b >= 0x20);
+    lng += result&1 ? ~(result>>1) : result>>1;
+    coords.push([lng/factor, lat/factor]); // [lon,lat]
+  }
+  return coords;
+}
+
+function valhallaManeuverToStep(m, coords) {
+  const loc = coords[m.begin_shape_index] || coords[0];
+  // Map Valhalla type numbers to readable text via the instruction field
+  return {
+    maneuver: { type: valhallaType(m.type), modifier: valhallaModifier(m.type), location: loc },
+    name: (m.street_names||[]).join(', ')||'',
+    distance: Math.round((m.length||0)*1000),
+    duration: m.time||0,
+    _instruction: m.instruction || ''
+  };
+}
+
+function valhallaType(t) {
+  if ([1,2,3].includes(t)) return 'depart';
+  if ([4,5,6].includes(t)) return 'arrive';
+  if (t === 8) return 'continue';
+  if ([9,10,11,17,18,22,23].includes(t)) return 'turn'; // right variants
+  if ([13,14,15,16,19,24].includes(t)) return 'turn'; // left variants
+  if ([25,37,38].includes(t)) return 'merge';
+  if ([26,27].includes(t)) return 'roundabout';
+  return 'continue';
+}
+
+function valhallaModifier(t) {
+  if ([2,9,17,23].includes(t)) return 'right';
+  if ([3,16,19,24].includes(t)) return 'left';
+  if ([11].includes(t)) return 'sharp right';
+  if ([14].includes(t)) return 'sharp left';
+  if ([10,18].includes(t)) return 'slight right';
+  if ([15].includes(t)) return 'slight left';
+  return '';
+}
+
+async function fetchCycleRoute(la1, lo1, la2, lo2) {
+  // use_roads: 0.9=fastest (roads), 0.5=balanced, 0.1=quietest (paths/lanes)
+  const useRoads = S.routeType === 'fastest' ? 0.9 : S.routeType === 'quietest' ? 0.0 : 0.5;
+  try {
+    const res = await fetch(VALHALLA, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        locations: [{lon:lo1,lat:la1},{lon:lo2,lat:la2}],
+        costing: 'bicycle',
+        costing_options: { bicycle: { use_roads: useRoads, bicycle_type: 'City', use_hills: 0.3 } },
+        directions_options: { language: 'en-GB', units: 'kilometers' }
+      })
+    });
+    if (!res.ok) throw new Error(`Valhalla ${res.status}`);
+    const data = await res.json();
+    const trip = data.trip;
+    const allCoords = [], steps = [];
+    trip.legs.forEach(leg => {
+      const coords = decodePolyline6(leg.shape);
+      allCoords.push(...coords);
+      leg.maneuvers.forEach(m => steps.push(valhallaManeuverToStep(m, coords)));
+    });
+    return {
+      duration: trip.summary.time,
+      distance: Math.round(trip.summary.length * 1000),
+      geometry: { coordinates: allCoords },
+      legs: [{ steps }]
+    };
+  } catch(e) {
+    console.warn('Valhalla fallback to OSRM:', e.message);
+    return fetchOSRMRoute(la1, lo1, la2, lo2, 'cycling');
+  }
+}
+
+async function fetchWalkRoute(la1, lo1, la2, lo2) {
+  // Valhalla pedestrian — much better London footpath/park/shortcut knowledge than OSRM foot
+  try {
+    const res = await fetch(VALHALLA, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        locations: [{lon:lo1,lat:la1},{lon:lo2,lat:la2}],
+        costing: 'pedestrian',
+        costing_options: { pedestrian: { walking_speed: 4.5, use_ferry: 0 } },
+        directions_options: { language: 'en-GB', units: 'kilometers' }
+      })
+    });
+    if (!res.ok) throw new Error(`Valhalla pedestrian ${res.status}`);
+    const data = await res.json();
+    const trip = data.trip;
+    const allCoords = [], steps = [];
+    trip.legs.forEach(leg => {
+      const coords = decodePolyline6(leg.shape);
+      allCoords.push(...coords);
+      leg.maneuvers.forEach(m => steps.push(valhallaManeuverToStep(m, coords)));
+    });
+    return {
+      duration: trip.summary.time,
+      distance: Math.round(trip.summary.length * 1000),
+      geometry: { coordinates: allCoords },
+      legs: [{ steps }]
+    };
+  } catch(e) {
+    console.warn('Valhalla pedestrian fallback to OSRM:', e.message);
+    return fetchOSRMRoute(la1, lo1, la2, lo2, 'foot');
+  }
+}
+
+async function fetchOSRMRoute(la1, lo1, la2, lo2, profile) {
+  const url = `${OSRM}/${profile}/${lo1},${la1};${lo2},${la2}?overview=full&steps=true&geometries=geojson`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (data.code !== 'Ok' || !data.routes.length) throw new Error('No route');
+  return data.routes[0];
+}
+
+function drawLine(coords, color, dashed) {
+  if (!coords || !coords.length) return;
+  L.polyline(coords.map(c=>[c[1],c[0]]), {
+    color, weight: dashed?3:4.5, dashArray: dashed?'10,7':null, opacity: 0.9, lineCap:'round', lineJoin:'round'
+  }).addTo(routeLayer);
+}
+
+// ─── Walk vs bike ─────────────────────────────────────────────────────────────
+// Estimate only (straight-line × DETOUR). The real check, using routed times,
+// runs again in planJourney once the routes come back.
+function walkIsFaster(pickup, dropoff) {
+  const direct  = haversine(S.start.lat, S.start.lon, S.end.lat, S.end.lon);
+  const walkSecs = direct * DETOUR / WALK_SPD * 60;
+  const bikeSecs = ( haversine(S.start.lat, S.start.lon, pickup.lat, pickup.lon) * DETOUR / WALK_SPD
+                   + haversine(pickup.lat, pickup.lon, dropoff.lat, dropoff.lon) * DETOUR / CYCLE_SPD
+                   + haversine(dropoff.lat, dropoff.lon, S.end.lat, S.end.lon) * DETOUR / WALK_SPD ) * 60
+                   + DOCK_OVERHEAD;
+  // Walk unless the bike saves at least MIN_BIKE_SAVING
+  return { yes: walkSecs - bikeSecs < MIN_BIKE_SAVING, dist: direct, walkSecs, bikeSecs };
+}
+
+function showWalkBanner(dist, secs) {
+  document.getElementById('walk-banner-text').textContent =
+    `🚶 ${fmtDist(dist)} on foot, about ${fmtTime(secs)}. The bike wouldn't save you a minute.`;
+  document.getElementById('walk-banner').classList.add('visible');
+  document.getElementById('journey-panel').classList.remove('visible');
+  document.getElementById('start-nav-btn').classList.remove('visible');
+  // Clear any route lines and station pins from a bike plan
+  routeLayer.clearLayers();
+  [markerPickup,markerDropoff].forEach(m => m && map.removeLayer(m));
+}
+
+// Fetch and draw the direct walking route, then show the banner
+async function showWalkOption(estSecs) {
+  const dist = haversine(S.start.lat, S.start.lon, S.end.lat, S.end.lon);
+  let walk = null;
+  try { walk = await fetchWalkRoute(S.start.lat, S.start.lon, S.end.lat, S.end.lon); } catch(e) {}
+  showWalkBanner(walk ? walk.distance : dist, walk ? walk.duration : estSecs);
+  if (walk) drawLine(walk.geometry.coordinates, '#16a34a', true);
+  S.walkIn = S.cycle = S.walkOut = null;
+  map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
+  toast('');
+}
+
+function hideWalkBanner() {
+  document.getElementById('walk-banner').classList.remove('visible');
+}
+
+// ─── Plan journey ─────────────────────────────────────────────────────────────
+async function planJourney(silent=false) {
+  if (!S.start || !S.end || !S.stations.length) return;
+
+  if (!silent) toast('Planning your journey…', 0);
+  routeLayer.clearLayers();
+  [markerPickup,markerDropoff].forEach(m => m && map.removeLayer(m));
+
+  // Seed dropoff, then optimise both stations
+  const seedDrop = S.stations.reduce((b,s) => {
+    if (prop(s,'NbEmptyDocks')===0) return b;
+    const d = haversine(S.end.lat,S.end.lon,s.lat,s.lon);
+    return (!b||d<b.d)?{s,d}:b;
+  }, null)?.s;
+  if (!seedDrop) { toast('⚠ No docking spaces near destination.',4000); return; }
+
+  const {station:pickup, dist:wiDist} = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon);
+  if (!pickup) { toast(`⚠ No ${S.bikeFilter==='any'?'':S.bikeFilter+' '}bikes nearby.`,4000); return; }
+
+  const {station:dropoff, dist:woDist} = bestDropoff(pickup.lat,pickup.lon, S.end.lat,S.end.lon);
+  if (!dropoff) { toast('⚠ No docking spaces near destination.',4000); return; }
+
+  // Walk vs bike, first pass (estimate). Skipped after "Bike anyway".
+  hideWalkBanner();
+  const forced = S.forceShowBike;
+  const est = walkIsFaster(pickup, dropoff);
+  if (!forced && est.yes) { await showWalkOption(est.walkSecs); return; }
+
+  S.pickup = pickup; S.dropoff = dropoff; S.journeyActive = true;
+
+  markerPickup  = L.marker([pickup.lat,pickup.lon],   {icon:makeNavPinIcon('🚲','#16a34a'),zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Pick up here</div><div class="popup-avail">${availabilityHTML(pickup)}</div>`);
+  markerDropoff = L.marker([dropoff.lat,dropoff.lon], {icon:makeNavPinIcon('🅿','#7c3aed'), zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Return here</div><div class="popup-avail">${availabilityHTML(dropoff)}</div>`);
+
+  let walkIn, cycle, walkOut;
+  const [wiRes, cyRes, woRes, dwRes] = await Promise.allSettled([
+    fetchWalkRoute(S.start.lat,S.start.lon, pickup.lat,pickup.lon),
+    fetchCycleRoute(pickup.lat,pickup.lon,  dropoff.lat,dropoff.lon),
+    fetchWalkRoute(dropoff.lat,dropoff.lon,  S.end.lat,S.end.lon),
+    forced ? Promise.resolve(null) : fetchWalkRoute(S.start.lat,S.start.lon, S.end.lat,S.end.lon),
+  ]);
+  walkIn  = wiRes.status === 'fulfilled' ? wiRes.value : null;
+  cycle   = cyRes.status === 'fulfilled' ? cyRes.value : null;
+  walkOut = woRes.status === 'fulfilled' ? woRes.value : null;
+  if (!walkIn || !walkOut) toast('Walking route unavailable — distances estimated.',3000);
+  if (!cycle)  toast('Cycling route unavailable — distance estimated.',3000);
+
+  // Walk vs bike, second pass (real routed times, including dock time)
+  const directWalk = dwRes.status === 'fulfilled' ? dwRes.value : null;
+  if (!forced && directWalk && walkIn && cycle && walkOut) {
+    const bikeSecs = walkIn.duration + cycle.duration + walkOut.duration + DOCK_OVERHEAD;
+    if (directWalk.duration - bikeSecs < MIN_BIKE_SAVING) {
+      showWalkBanner(directWalk.distance, directWalk.duration);
+      drawLine(directWalk.geometry.coordinates, '#16a34a', true);
+      S.walkIn = S.cycle = S.walkOut = null;
+      toast('');
+      return;
+    }
+  }
+
+  S.walkIn = walkIn; S.cycle = cycle; S.walkOut = walkOut;
+
+  if (walkIn)  drawLine(walkIn.geometry.coordinates,  '#6366f1', true);
+  if (cycle)   drawLine(cycle.geometry.coordinates,   '#e31837', false);
+  if (walkOut) drawLine(walkOut.geometry.coordinates, '#6366f1', true);
+
+  map.fitBounds(L.latLngBounds([
+    [S.start.lat,S.start.lon],[S.end.lat,S.end.lon],
+    [pickup.lat,pickup.lon],[dropoff.lat,dropoff.lon]
+  ]), {padding:[50,50]});
+
+  renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist);
+  toast('');
+}
+
+// ─── Journey panel ────────────────────────────────────────────────────────────
+function bikeChips(station) {
+  const bikes=prop(station,'NbBikes'),ebikes=prop(station,'NbEBikes'),std=bikes-ebikes;
+  const c=[];
+  if (std>0)    c.push(`<span class="avail-chip chip-std">🚲 ${std} standard</span>`);
+  if (ebikes>0) c.push(`<span class="avail-chip chip-ebike">⚡ ${ebikes} e-bike${ebikes>1?'s':''}</span>`);
+  if (bikes===0)c.push(`<span class="avail-chip chip-none">No bikes</span>`);
+  return c.join(' ');
+}
+
+function buildStepRows(route) {
+  if (!route) return '';
+  let html = '';
+  route.legs.forEach(leg => leg.steps.forEach(step => {
+    if (step.maneuver.type === 'depart') return;
+    const text = step._instruction || stepText(step);
+    const d = step.distance > 8 ? fmtDist(step.distance) : '';
+    html += `<div class="step-row"><span class="step-ic">${stepIcon(step.maneuver.type,step.maneuver.modifier)}</span><span class="step-txt">${text}</span><span class="step-d">${d}</span></div>`;
+  }));
+  return html;
+}
+
+function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
+  const total = (walkIn?.duration||0)+(cycle?.duration||0)+(walkOut?.duration||0)+DOCK_OVERHEAD;
+  const cDist = cycle ? fmtDist(cycle.distance) : fmtDist(haversine(pickup.lat,pickup.lon,dropoff.lat,dropoff.lon));
+  const empty = prop(dropoff,'NbEmptyDocks');
+  document.getElementById('journey-summary').innerHTML = `
+    <div class="sum-chip"><strong>~${fmtTime(total)} total</strong></div>
+    <div class="sum-chip">🚶 ${walkIn?fmtTime(walkIn.duration):fmtDist(wiDist)}</div>
+    <div class="sum-chip">🚲 ${cycle?fmtTime(cycle.duration):'?'} · ${cDist}</div>
+    <div class="sum-chip">🚶 ${walkOut?fmtTime(walkOut.duration):fmtDist(woDist)}</div>`;
+  let steps = '';
+  steps += `<div class="step-header">🟣 Walk to pick-up <span class="step-header-line"></span> ${fmtDist(wiDist)}</div>`;
+  steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${pickup.commonName}</span></div>`;
+  steps += `<div class="avail-row">${bikeChips(pickup)}</div>`;
+  steps += buildStepRows(walkIn);
+  steps += `<div class="step-header">🔴 Cycle <span class="step-header-line"></span> ${cDist}</div>`;
+  steps += buildStepRows(cycle);
+  steps += `<div class="step-row"><span class="step-ic">🅿</span><span class="step-txt">${dropoff.commonName} · ${empty} empty dock${empty!==1?'s':''}</span></div>`;
+  steps += `<div class="step-header">🟣 Walk to destination <span class="step-header-line"></span> ${fmtDist(woDist)}</div>`;
+  steps += buildStepRows(walkOut);
+  steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${S.end.label}</span></div>`;
+  document.getElementById('steps-list').innerHTML = steps;
+  document.getElementById('journey-panel').classList.add('visible');
+  document.getElementById('start-nav-btn').classList.add('visible');
+}
+
+// ─── Step text ────────────────────────────────────────────────────────────────
+const ICONS = { depart:'▶',arrive:'📍',roundabout:'🔄',rotary:'🔄',merge:'⤵',continue:'↑',
+  'turn-left':'↰','turn-right':'↱','turn-slight left':'↖','turn-slight right':'↗',
+  'turn-sharp left':'↩','turn-sharp right':'↪','turn-':'↑','fork-left':'↰','fork-right':'↱',
+  'end of road':'↱', _:'→' };
+function stepIcon(type,mod) { return ICONS[`${type}-${mod}`]||ICONS[type]||ICONS._; }
+function stepText(step) {
+  if (step._instruction) return step._instruction;
+  const {type,modifier:mod} = step.maneuver, road = step.name ? ` on ${step.name}` : '';
+  if (type==='depart')   return `Head ${mod||'along'}${road}`;
+  if (type==='arrive')   return 'Arrive';
+  if (type==='continue') return `Continue${road}`;
+  if (type==='turn')     return `Turn ${mod}${road}`;
+  if (type==='fork')     return `Keep ${mod}${road}`;
+  if (type==='merge')    return `Merge${road}`;
+  if (type==='roundabout'||type==='rotary') return `At roundabout, take exit ${step.maneuver.exit||''}${road}`;
+  return `${type} ${mod||''}${road}`.trim();
+}
+
+// ─── Availability popup + likelihood heuristic ────────────────────────────────
+function estimateLikelihood(station, type) {
+  // type: 'bike' | 'dock'
+  const h = new Date().getHours();
+  const isWeekend = [0,6].includes(new Date().getDay());
+  const capacity  = prop(station,'NbDocks') || 15;
+  const isRush    = !isWeekend && ((h>=7&&h<=9)||(h>=17&&h<=19));
+  const isQuiet   = h >= 22 || h <= 6;
+
+  if (isQuiet) return { text: 'Very unlikely soon — very few people cycling at this hour.', color:'#dc2626', wait:'15+ min' };
+  if (isRush && capacity >= 10) return { text: 'Good chance — high turnover during rush hour.', color:'#16a34a', wait:'2–5 min' };
+  if (isRush)  return { text: 'Possible — moderate activity at this station.', color:'#d97706', wait:'5–10 min' };
+  return { text: 'Uncertain — normal daytime activity, hard to predict.', color:'#d97706', wait:'5–15 min' };
+}
+
+function showAvailAlert(station, type) {
+  const bikes = prop(station,'NbBikes'), docks = prop(station,'NbEmptyDocks');
+  const count = type === 'bike' ? usableBikes(station) : docks;
+  const thing = type === 'bike' ? 'bike' : 'dock';
+  const lh = estimateLikelihood(station, type);
+
+  const isPickup = type === 'bike';
+  const emoji = isPickup ? '🚲' : '🅿';
+  document.getElementById('avail-popup-title').textContent =
+    count === 0 ? `${emoji} No ${thing}s available` : `${emoji} Only ${count} ${thing}${count!==1?'s':''} left`;
+  document.getElementById('avail-popup-body').textContent =
+    count === 0
+      ? `${isPickup?'Pick-up':'Return'} station ${station.commonName} has no ${thing}s right now.`
+      : `${isPickup?'Pick-up':'Return'} station ${station.commonName} is very low on ${thing}s.`;
+  document.getElementById('avail-popup-likelihood').innerHTML =
+    `<span style="color:${lh.color};font-weight:500;">📊 ${lh.text}</span><br><span style="color:#6b7280;">Estimated wait if you stay: ${lh.wait}</span>`;
+
+  pendingAlert = { station, type };
+  document.getElementById('avail-popup').classList.add('visible');
+}
+
+function hideAvailAlert() {
+  document.getElementById('avail-popup').classList.remove('visible');
+  pendingAlert = null;
+}
+
+async function rerouteStation() {
+  const alert = pendingAlert;
+  hideAvailAlert();
+  if (!alert) return;
+
+  // Not navigating yet: a fresh plan already picks the best stations
+  if (!NAV.active) { await loadStations(false); planJourney(); return; }
+
+  toast(alert.type === 'dock' ? 'Finding another return station…' : 'Finding another pick-up station…', 0);
+  await loadStations(false);
+  const here = NAV.userLat !== undefined
+    ? { lat: NAV.userLat, lon: NAV.userLon }
+    : (alert.type === 'bike' ? S.start : S.pickup);
+
+  if (alert.type === 'dock') {
+    // Prefer a dock with room to spare; settle for 1 space only if nothing else is near
+    const newDrop = bestDropoff(here.lat, here.lon, S.end.lat, S.end.lon, S.dropoff.id, LOW_AVAIL).station
+                 || bestDropoff(here.lat, here.lon, S.end.lat, S.end.lon, S.dropoff.id, 1).station;
+    if (!newDrop) { toast('No other return station with space nearby.',3500); return; }
+    const [cy, wo] = await Promise.allSettled([
+      fetchCycleRoute(here.lat, here.lon, newDrop.lat, newDrop.lon),
+      fetchWalkRoute(newDrop.lat, newDrop.lon, S.end.lat, S.end.lon),
+    ]);
+    S.dropoff = newDrop;
+    S.cycle   = cy.status === 'fulfilled' ? cy.value : null;
+    S.walkOut = wo.status === 'fulfilled' ? wo.value : null;
+    NAV.steps = buildNavSteps(null, S.cycle, S.walkOut, S.pickup, S.dropoff, 'cycle');
+    toast(`Return rerouted to ${newDrop.commonName}`,3500);
+  } else {
+    const newPickup = bestPickup(here.lat, here.lon, S.dropoff.lat, S.dropoff.lon, S.pickup.id, LOW_AVAIL).station
+                   || bestPickup(here.lat, here.lon, S.dropoff.lat, S.dropoff.lon, S.pickup.id, 1).station;
+    if (!newPickup) { toast('No other pick-up station with bikes nearby.',3500); return; }
+    const [wi, cy] = await Promise.allSettled([
+      fetchWalkRoute(here.lat, here.lon, newPickup.lat, newPickup.lon),
+      fetchCycleRoute(newPickup.lat, newPickup.lon, S.dropoff.lat, S.dropoff.lon),
+    ]);
+    S.pickup = newPickup;
+    S.walkIn = wi.status === 'fulfilled' ? wi.value : null;
+    S.cycle  = cy.status === 'fulfilled' ? cy.value : null;
+    NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff, 'walk');
+    toast(`Pick-up rerouted to ${newPickup.commonName}`,3500);
+  }
+
+  NAV.current = 0;
+  if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId = null; }
+  NAV.proximityFor = null;
+  redrawJourney();
+  renderNavAlternatives();
+  updateNavCard();
+}
+
+// Redraw lines and pickup/dropoff pins from the current S state
+function redrawJourney() {
+  routeLayer.clearLayers();
+  if (S.walkIn)  drawLine(S.walkIn.geometry.coordinates,  '#6366f1', true);
+  if (S.cycle)   drawLine(S.cycle.geometry.coordinates,   '#e31837', false);
+  if (S.walkOut) drawLine(S.walkOut.geometry.coordinates, '#6366f1', true);
+  if (markerPickup)  markerPickup.setLatLng([S.pickup.lat, S.pickup.lon]);
+  if (markerDropoff) markerDropoff.setLatLng([S.dropoff.lat, S.dropoff.lon]);
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+// Show amber-ringed alternative stations near pickup and dropoff during navigation
+function renderNavAlternatives() {
+  navAltLayer.clearLayers();
+  if (!S.pickup || !S.dropoff) return;
+  const ALT_RADIUS = 350; // metres
+  const shown = new Set([S.pickup.id, S.dropoff.id]);
+  S.stations.forEach(s => {
+    if (shown.has(s.id)) return;
+    const nearPickup  = haversine(S.pickup.lat,  S.pickup.lon,  s.lat, s.lon) < ALT_RADIUS;
+    const nearDropoff = haversine(S.dropoff.lat, S.dropoff.lon, s.lat, s.lon) < ALT_RADIUS;
+    if (!nearPickup && !nearDropoff) return;
+    const bikes = prop(s,'NbBikes'), ebikes = prop(s,'NbEBikes');
+    const empty = prop(s,'NbEmptyDocks');
+    // Only show alts that could actually help
+    const useful = nearPickup ? bikes > 0 : empty > 0;
+    if (!useful) return;
+    const label = nearPickup
+      ? `<div class="popup-name">🔄 Alt pick-up</div><div class="popup-avail">${availabilityHTML(s)}</div><div style="font-size:11px;color:#92400e;margin-top:4px;">${s.commonName}</div>`
+      : `<div class="popup-name">🔄 Alt return</div><div class="popup-avail">${availabilityHTML(s)}</div><div style="font-size:11px;color:#92400e;margin-top:4px;">${s.commonName}</div>`;
+    L.marker([s.lat,s.lon], {icon:makeAltStationIcon(bikes,ebikes), zIndexOffset:400})
+      .bindPopup(label)
+      .addTo(navAltLayer);
+  });
+}
+
+function clearNavAlternatives() { navAltLayer.clearLayers(); }
+
+function buildNavSteps(walkIn, cycle, walkOut, pickup, dropoff, fromLeg='walk') {
+  const all = [];
+  const add = (route, legType) => {
+    if (!route) return;
+    route.legs.forEach(leg => leg.steps.forEach(s => all.push({...s, legType})));
+  };
+  if (fromLeg !== 'cycle') {
+    add(walkIn, 'walk');
+    all.push({ legType:'pickup',  _synthetic:true, _label:`Pick up bike at ${pickup.commonName}`,  maneuver:{type:'arrive',location:[pickup.lon,pickup.lat]},  distance:0, duration:60 });
+  }
+  add(cycle, 'cycle');
+  all.push({ legType:'dropoff', _synthetic:true, _label:`Return bike at ${dropoff.commonName}`,  maneuver:{type:'arrive',location:[dropoff.lon,dropoff.lat]}, distance:0, duration:30 });
+  add(walkOut, 'walk');
+  all.push({ legType:'walk',    _synthetic:true, _label:`Arrived at ${S.end.label}`,             maneuver:{type:'arrive',location:[S.end.lon,S.end.lat]},     distance:0, duration:0  });
+  return all;
+}
+
+function legCardClass(t) {
+  if (t==='cycle') return 'cycle'; if (t==='pickup') return 'pickup'; if (t==='dropoff') return 'dropoff'; return 'walk';
+}
+
+function updateNavCard() {
+  const step = NAV.steps[NAV.current];
+  if (!step) return;
+  const total = NAV.steps.length;
+  let icon, primary, road = '', dist = '';
+  if (step._synthetic) {
+    icon = step.legType==='pickup'?'🚲':step.legType==='dropoff'?'🅿':'📍';
+    primary = step._label;
+  } else {
+    icon = stepIcon(step.maneuver.type, step.maneuver.modifier);
+    primary = step._instruction || stepText(step);
+    road = step.name||'';
+    if (step.distance > 8) dist = fmtDist(step.distance);
+  }
+  document.getElementById('nav-maneuver').textContent  = icon;
+  document.getElementById('nav-primary').textContent   = primary;
+  document.getElementById('nav-road').textContent      = road;
+  document.getElementById('nav-dist').textContent      = dist;
+  document.getElementById('nav-card').className        = legCardClass(step.legType);
+  document.getElementById('nav-step-label').textContent = `Step ${NAV.current+1} / ${total}`;
+  document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/(total-1))*100)}%`;
+  const remSecs = NAV.steps.slice(NAV.current).reduce((s,st)=>s+(st.duration||0),0);
+  document.getElementById('nav-eta-label').textContent = remSecs>0?`~${fmtTime(remSecs)} left`:'';
+}
+
+// Point S.pickup / S.dropoff at the freshly loaded station objects
+function syncJourneyStations() {
+  if (S.pickup)  S.pickup  = S.stations.find(s => s.id === S.pickup.id)  || S.pickup;
+  if (S.dropoff) S.dropoff = S.stations.find(s => s.id === S.dropoff.id) || S.dropoff;
+}
+
+// Bikes that count for the current filter
+function usableBikes(st) {
+  const bikes = prop(st,'NbBikes'), ebikes = prop(st,'NbEBikes');
+  if (S.bikeFilter === 'ebike')    return ebikes;
+  if (S.bikeFilter === 'standard') return bikes - ebikes;
+  return bikes;
+}
+
+// Next pickup/dropoff step ahead and the seconds until we reach it
+function nextStationStep() {
+  let secs = 0;
+  for (let i = NAV.current; i < NAV.steps.length; i++) {
+    const st = NAV.steps[i];
+    if (st.legType === 'pickup' || st.legType === 'dropoff') return { type: st.legType, secs };
+    secs += st.duration || 0;
+  }
+  return null;
+}
+
+// Starts ~5 min before each station: one check straight away, then a poll
+// every minute ONLY while that station's count is low.
+function startProximityRefresh(type) {
+  if (NAV.proximityRefreshId) clearInterval(NAV.proximityRefreshId);
+  NAV.proximityFor = type;
+  NAV.lastAlert = null;
+  doProximityRefresh(true);
+  NAV.proximityRefreshId = setInterval(() => doProximityRefresh(false), 60000);
+}
+
+async function doProximityRefresh(force) {
+  if (!NAV.active || !NAV.proximityFor) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; return; }
+  const isPickup = NAV.proximityFor === 'pickup';
+  const countOf  = st => isPickup ? usableBikes(st) : prop(st,'NbEmptyDocks');
+
+  // Healthy last time we looked: don't spend a request
+  if (!force && countOf(isPickup ? S.pickup : S.dropoff) >= LOW_AVAIL) return;
+
+  await loadStations(false);
+  renderNavAlternatives();
+  const st = isPickup ? S.pickup : S.dropoff;
+  const count = countOf(st);
+
+  // Alert when below threshold. After "Wait here", only alert again if it gets worse.
+  if (count < LOW_AVAIL) {
+    const prev = NAV.lastAlert;
+    if (!prev || prev.type !== NAV.proximityFor || count < prev.count) {
+      NAV.lastAlert = { type: NAV.proximityFor, count };
+      showAvailAlert(st, isPickup ? 'bike' : 'dock');
+    }
+  }
+}
+
+function onNavPosition(pos) {
+  const {latitude:lat, longitude:lon} = pos.coords;
+  const dotHTML = `<div style="width:16px;height:16px;border-radius:50%;background:#1d4ed8;border:3px solid white;box-shadow:0 2px 8px rgba(29,78,216,0.55)"></div>`;
+  const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[16,16],iconAnchor:[8,8]});
+  if (NAV.userMarker) NAV.userMarker.setLatLng([lat,lon]);
+  else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000}).addTo(map);
+  map.panTo([lat,lon],{animate:true,duration:0.5});
+
+
+  // Auto-advance steps
+  while (NAV.current < NAV.steps.length-1) {
+    const next = NAV.steps[NAV.current+1];
+    const [nLon,nLat] = next.maneuver.location;
+    if (haversine(lat,lon,nLat,nLon) < STEP_ADV_M) {
+      NAV.current++;
+      if (NAV.current >= NAV.steps.length-1) {
+        updateNavCard();
+        NAV.arrived = true;
+        setTimeout(()=>{ stopNavigation(); toast('🎉 You have arrived!',6000); },1800);
+        return;
+      }
+    } else break;
+  }
+
+  // Watch the next station once we're ~5 min from it
+  const nxt = nextStationStep();
+  if (!nxt) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
+  else if (nxt.secs <= PROXIMITY_SECS && NAV.proximityFor !== nxt.type) startProximityRefresh(nxt.type);
+
+  updateNavCard();
+}
+
+function startNavigation() {
+  if (!S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
+  NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
+  NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null;
+  renderStations();
+  logJourneyStart();
+  document.getElementById('search-panel').classList.add('nav-active');
+  document.getElementById('journey-panel').classList.add('nav-active');
+  document.getElementById('nav-overlay').classList.add('active');
+  document.getElementById('map-legend').style.display = 'none';
+  updateNavCard();
+  renderNavAlternatives(); // show amber-ringed alt stations
+  if (navigator.geolocation) {
+    NAV.watchId = navigator.geolocation.watchPosition(onNavPosition,
+      err => toast(`GPS: ${err.message}`,4000),
+      {enableHighAccuracy:true, maximumAge:1500, timeout:10000});
+  }
+}
+
+function stopNavigation() {
+  NAV.active = false;
+  if (NAV.watchId !== null)        { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
+  if (NAV.proximityRefreshId)      { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; }
+  if (NAV.userMarker)              { map.removeLayer(NAV.userMarker); NAV.userMarker=null; }
+  document.getElementById('search-panel').classList.remove('nav-active');
+  document.getElementById('journey-panel').classList.remove('nav-active');
+  document.getElementById('nav-overlay').classList.remove('active');
+  document.getElementById('map-legend').style.display = '';
+  hideAvailAlert();
+  clearNavAlternatives();
+  logJourneyEnd(NAV.arrived === true);
+  NAV.arrived = false; NAV.proximityFor = null;
+  renderStations();
+}
+
+// ─── Activity (local journey log) ─────────────────────────────────────────────
+const HISTORY_KEY = 'sc-history-v1';
+function loadHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; } }
+function saveHistory(h) { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 100))); } catch(e) {} }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function logJourneyStart() {
+  const h = loadHistory();
+  NAV.historyId = Date.now();
+  h.unshift({
+    id: NAV.historyId, startedAt: NAV.historyId,
+    from: S.start?.label, to: S.end?.label,
+    pickup: S.pickup?.commonName, dropoff: S.dropoff?.commonName,
+    plannedSecs: (S.walkIn?.duration||0) + (S.cycle?.duration||0) + (S.walkOut?.duration||0) + DOCK_OVERHEAD,
+    cycleMetres: S.cycle?.distance || 0,
+    status: 'started'
+  });
+  saveHistory(h);
+}
+
+function logJourneyEnd(arrived) {
+  if (!NAV.historyId) return;
+  const h = loadHistory();
+  const e = h.find(x => x.id === NAV.historyId);
+  if (e) {
+    e.endedAt = Date.now();
+    e.status = arrived ? 'completed' : 'ended early';
+    e.dropoff = S.dropoff?.commonName || e.dropoff; // may have been rerouted
+    e.cycleMetres = S.cycle?.distance || e.cycleMetres;
+    saveHistory(h);
+  }
+  NAV.historyId = null;
+}
+
+function renderHistory() {
+  const h = loadHistory();
+  const done = h.filter(x => x.status === 'completed');
+  const km = done.reduce((t,x) => t + (x.cycleMetres||0), 0) / 1000;
+  document.getElementById('history-totals').innerHTML =
+    `<div class="hist-total"><b>${done.length}</b><span>trips completed</span></div>` +
+    `<div class="hist-total"><b>${km.toFixed(1)} km</b><span>cycled</span></div>`;
+  const list = document.getElementById('history-list');
+  if (!h.length) { list.innerHTML = '<div class="hist-empty">No trips yet. Start navigation on a journey and it will show up here.</div>'; return; }
+  list.innerHTML = h.map(x => {
+    const d = new Date(x.startedAt);
+    const when = d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' · ' +
+                 d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+    const took = x.endedAt ? fmtTime((x.endedAt - x.startedAt)/1000) : '–';
+    return `<div class="hist-item">
+      <div class="hist-route">${esc(x.from)} → ${esc(x.to)}</div>
+      <div class="hist-meta">${when} · ${esc(x.status)}<br>
+      🚲 ${esc(x.pickup)} → 🅿 ${esc(x.dropoff)}<br>
+      Took ${took} (planned ${fmtTime(x.plannedSecs)}) · ${fmtDist(x.cycleMetres||0)} cycled</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Geolocation — network-first to avoid GPS timeout ────────────────────────
+function requestLocation() {
+  if (!navigator.geolocation) { toast('Geolocation not supported.',4000); return; }
+  toast('Finding your location…',0);
+  navigator.geolocation.getCurrentPosition(
+    ({coords}) => { setStart(coords.latitude,coords.longitude,'Your location',true); toast('📍 Location found',2000); },
+    () => {
+      toast('Trying GPS…',0);
+      navigator.geolocation.getCurrentPosition(
+        ({coords}) => { setStart(coords.latitude,coords.longitude,'Your location',true); toast('📍 Location found',2000); },
+        err => toast('Location unavailable — allow access in browser settings.',6000),
+        {enableHighAccuracy:true, timeout:20000, maximumAge:0}
+      );
+    },
+    {enableHighAccuracy:false, timeout:5000, maximumAge:120000}
+  );
+}
+
+function setStart(lat, lon, label, isGPS=false) {
+  S.start = {lat,lon,label}; S.startIsGPS = isGPS; S.forceShowBike = false;
+  document.getElementById('from-input').value = label;
+  document.getElementById('from-clear').classList.add('visible');
+  if (markerStart) map.removeLayer(markerStart);
+  // GPS gets pulsing blue dot; typed address gets red pin — visually distinct
+  markerStart = L.marker([lat,lon], {
+    icon: isGPS ? makeGPSIcon() : makeTypedStartIcon(),
+    zIndexOffset: 200
+  }).addTo(map);
+  loadStations();
+  if (!S.end) map.setView([lat,lon],14);
+}
+
+function setEnd(lat, lon, label) {
+  S.end = {lat,lon,label}; S.forceShowBike = false;
+  document.getElementById('to-input').value = label;
+  document.getElementById('to-clear').classList.add('visible');
+  if (markerEnd) map.removeLayer(markerEnd);
+  markerEnd = L.marker([lat,lon], {
+    icon: L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#7c3aed;border:3px solid white;box-shadow:0 2px 6px rgba(124,58,237,0.4)"></div>`,iconSize:[14,14],iconAnchor:[7,7]})
+  }).addTo(map);
+  loadStations();
+}
+
+// ─── Autocomplete — Photon (matches partial words), Nominatim fallback ──────
+const PHOTON = 'https://photon.komoot.io/api/';
+const MIN_QUERY = 3; // letters (not counting the house number) before suggestions start
+const letterCount = q => splitHouseNumber(q).rest.replace(/[^a-z]/gi, '').length;
+
+// "5 Scawfell", "12a high st" → { num: '5', rest: 'Scawfell' }
+function splitHouseNumber(q) {
+  const m = q.match(/^\s*(\d+[a-zA-Z]?)\b[\s,]*(.*)$/);
+  return m && m[2] ? { num: m[1], rest: m[2] } : { num: null, rest: q };
+}
+
+function biasPoint() {
+  if (S.start) return S.start;
+  const c = map.getCenter();
+  return { lat: c.lat, lon: c.lng };
+}
+
+async function getSuggestions(q) {
+  try {
+    return await photonSuggestions(q);
+  } catch(e) {
+    console.warn('Photon failed, falling back to Nominatim:', e.message);
+    return nominatimSuggestions(q, splitHouseNumber(q).num);
+  }
+}
+
+async function photonRaw(q) {
+  const b = biasPoint();
+  const res = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=10&lang=en&bbox=-0.52,51.26,0.35,51.72&lat=${b.lat}&lon=${b.lon}`);
+  if (!res.ok) throw new Error(`Photon ${res.status}`);
+  return (await res.json()).features || [];
+}
+
+const isStreetFeature = f => f.properties?.osm_key === 'highway' || f.properties?.type === 'street';
+
+function photonItem(f, num) {
+  const p = f.properties || {};
+  const [lon, lat] = f.geometry.coordinates;
+  const area = [p.district || p.locality || p.city, p.postcode].filter(Boolean).join(' · ');
+  if (p.housenumber)
+    return { main: `${p.housenumber} ${p.street || p.name || ''}`, sub: area, lat, lon,            // exact address
+             dedupe: `${p.housenumber} ${p.street || p.name || ''}|${p.district || p.locality || ''}`.toLowerCase() };
+  if (num && isStreetFeature(f))
+    return { main: `${num} ${p.name}`, sub: ['Street level', area].filter(Boolean).join(' · '),    // keep typed number
+             lat, lon, dedupe: `${num} ${p.name}|${p.district || p.locality || ''}`.toLowerCase() };
+  return { main: p.name || p.street || 'Location',
+           sub: [p.name && p.street && p.street !== p.name ? p.street : '', area].filter(Boolean).join(' · '), lat, lon };
+}
+
+async function photonSuggestions(q) {
+  const { num, rest } = splitHouseNumber(q);
+  let items;
+  if (num) {
+    // The number confuses prefix matching, so search the street on its own,
+    // and the full text in parallel to catch addresses that do have numbers mapped.
+    const [full, street] = await Promise.all([photonRaw(q), photonRaw(rest)]);
+    const firstWord = rest.trim().split(/\s+/)[0].toLowerCase();
+    const exact = full.filter(f => String(f.properties.housenumber || '').toLowerCase() === num.toLowerCase()
+                              && String(f.properties.street || f.properties.name || '').toLowerCase().includes(firstWord))
+                      .map(f => photonItem(f, num));
+    items = [...exact,
+             ...street.filter(isStreetFeature).map(f => photonItem(f, num)),
+             ...street.filter(f => !isStreetFeature(f)).map(f => photonItem(f, null))];
+  } else {
+    items = (await photonRaw(q)).map(f => photonItem(f, null));
+  }
+  const seen = new Set();
+  return items.filter(x => {
+    const k = x.dedupe || (x.main + '|' + x.sub).toLowerCase();   // one row per street stretch, nearest first
+    if (!x.main || seen.has(k)) return false;
+    seen.add(k); return true;
+  }).slice(0, 6);
+}
+
+async function nominatimSuggestions(q, num) {
+  const url = `${NOMINATIM}/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=6&countrycodes=gb&accept-language=en&bounded=1&viewbox=-0.52,51.72,0.35,51.26`;
+  const res  = await fetch(url, {headers:{'User-Agent':'RotharBikePlanner/1.0'}});
+  const data = await res.json();
+  return data.map(item => {
+    const addr = item.address||{};
+    const road  = addr.road || addr.pedestrian || addr.footway || addr.path || '';
+    const area  = [addr.suburb||addr.city_district, addr.postcode].filter(Boolean).join(' · ');
+    let main, sub = area;
+    if (addr.house_number) main = `${addr.house_number} ${road}`;
+    else if (num && road) { main = `${num} ${road}`; sub = ['Street level', area].filter(Boolean).join(' · '); }
+    else main = road || item.display_name.split(',')[0];
+    return { main: main.trim(), sub, lat: parseFloat(item.lat), lon: parseFloat(item.lon) };
+  }).filter(x => x.main);
+}
+
+function bindAutocomplete(inputId, listId, onSelect) {
+  const input = document.getElementById(inputId);
+  const list  = document.getElementById(listId);
+  let timer, cache = {};
+  const hide = () => list.style.display = 'none';
+  const show = items => {
+    if (!items.length) { hide(); return; }
+    list.innerHTML = items.map((it,i) =>
+      `<div class="ac-item" data-i="${i}"><div><div class="ac-main">${it.main}</div><div class="ac-sub">${it.sub}</div></div></div>`
+    ).join('');
+    list.style.display = 'block';
+    list.querySelectorAll('.ac-item').forEach(el => el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const it = items[parseInt(el.dataset.i)];
+      hide(); onSelect(it.lat, it.lon, it.main);
+    }));
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (letterCount(q) < MIN_QUERY) { hide(); return; }
+    if (cache[q]) { show(cache[q]); return; }
+    timer = setTimeout(async () => {
+      try { const its = await getSuggestions(q); cache[q] = its; if (document.activeElement===input) show(its); }
+      catch(e) { hide(); }
+    }, 300);
+  });
+  input.addEventListener('blur',  () => setTimeout(hide, 200));
+  input.addEventListener('focus', () => { const q=input.value.trim(); if(letterCount(q)>=MIN_QUERY&&cache[q]) show(cache[q]); });
+  input.addEventListener('keydown', e => { if(e.key==='Escape') hide(); });
+}
+
+// ─── Clear buttons ─────────────────────────────────────────────────────────────
+document.getElementById('from-input').addEventListener('input', function() {
+  document.getElementById('from-clear').classList.toggle('visible', this.value.length > 0);
+});
+document.getElementById('to-input').addEventListener('input', function() {
+  document.getElementById('to-clear').classList.toggle('visible', this.value.length > 0);
+});
+document.getElementById('from-clear').addEventListener('click', () => {
+  document.getElementById('from-input').value = '';
+  document.getElementById('from-clear').classList.remove('visible');
+  S.start = null; S.startIsGPS = false; S.forceShowBike = false;
+  if (markerStart) { map.removeLayer(markerStart); markerStart=null; }
+  hideWalkBanner(); renderStations();
+});
+document.getElementById('to-clear').addEventListener('click', () => {
+  document.getElementById('to-input').value = '';
+  document.getElementById('to-clear').classList.remove('visible');
+  S.end = null; S.forceShowBike = false;
+  if (markerEnd) { map.removeLayer(markerEnd); markerEnd=null; }
+  routeLayer.clearLayers();
+  document.getElementById('journey-panel').classList.remove('visible');
+  document.getElementById('start-nav-btn').classList.remove('visible');
+  hideWalkBanner(); renderStations();
+  S.journeyActive = false;
+});
+
+// ─── Wire up all controls ─────────────────────────────────────────────────────
+document.getElementById('loc-btn').addEventListener('click', requestLocation);
+document.getElementById('refresh-btn').addEventListener('click', () => loadStations(true));
+document.getElementById('start-nav-btn').addEventListener('click', startNavigation);
+document.getElementById('nav-stop').addEventListener('click', stopNavigation);
+document.getElementById('history-btn').addEventListener('click', () => { renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
+document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
+document.getElementById('walk-anyway-btn').addEventListener('click', () => {
+  S.forceShowBike = true; hideWalkBanner(); planJourney();
+});
+
+// Bike type filter
+document.querySelectorAll('#filter-row .pill-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#filter-row .pill-btn').forEach(b => b.classList.remove('active-red'));
+  btn.classList.add('active-red');
+  S.bikeFilter = btn.dataset.filter;
+  renderStations();
+  if (S.start && S.end) planJourney();
+}));
+
+// Route type
+document.querySelectorAll('#route-row .pill-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#route-row .pill-btn').forEach(b => b.classList.remove('active-blue'));
+  btn.classList.add('active-blue');
+  S.routeType = btn.dataset.rt;
+  if (S.start && S.end) planJourney();
+}));
+
+// Availability popup actions
+document.getElementById('avail-popup-close').addEventListener('click', hideAvailAlert);
+document.getElementById('avail-wait').addEventListener('click', hideAvailAlert);
+document.getElementById('avail-reroute').addEventListener('click', rerouteStation);
+
+bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false));
+bindAutocomplete('to-input',  'to-ac',  setEnd);
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+setInterval(updateBadge, 15000);
+loadStations();
+setTimeout(requestLocation, 600);
+</script>
+</body>
+</html>
