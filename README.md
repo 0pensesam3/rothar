@@ -2,7 +2,7 @@
 
 A journey planner for London's public bike-share scheme, built as a single-page web app you can add to your phone's home screen.
 
-Not affiliated with TfL or any sponsor of the scheme.
+Powered by TfL Open Data. Not affiliated with or endorsed by TfL or any sponsor of the scheme.
 
 ## What it does
 
@@ -22,6 +22,10 @@ Not affiliated with TfL or any sponsor of the scheme.
 - Address search: Photon, Nominatim fallback
 - Map: MapLibre GL with OpenFreeMap's Positron style (OpenStreetMap data)
 - Compass: device orientation (asks permission on iPhone)
+
+## Privacy
+
+The app counts anonymous usage with GoatCounter (no cookies, no personal data): only action names such as "journey planned" or "navigation started". It never sends locations, addresses or what you searched for. Trip history in Activity stays on your phone.
 
 ## Files
 
