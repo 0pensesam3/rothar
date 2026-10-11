@@ -10,8 +10,9 @@ Not affiliated with TfL or any sponsor of the scheme.
 - Picks pickup and dropoff docks by total journey time, using live availability
 - Suggests walking when the bike wouldn't save at least a minute (dock time included)
 - Route types: Balanced, Fastest, Bike lanes
-- Turn-by-turn navigation, with low-availability alerts and rerouting near each dock
-- Address search from 3 letters, keeping house numbers
+- Turn-by-turn navigation in a tilted, heading-up view, with a compass check that you're facing the right way
+- Low-availability alerts and rerouting near each dock
+- Search from 3 letters: places by name (pubs, shops, stations) and addresses with house numbers
 - Activity log of trips navigated in the app, stored on the device
 
 ## Data and services
@@ -19,7 +20,8 @@ Not affiliated with TfL or any sponsor of the scheme.
 - Live dock data: TfL Unified API (BikePoint)
 - Routing: Valhalla (cycling and walking), OSRM fallback
 - Address search: Photon, Nominatim fallback
-- Map: OpenStreetMap tiles via Leaflet
+- Map: MapLibre GL with OpenFreeMap's Positron style (OpenStreetMap data)
+- Compass: device orientation (asks permission on iPhone)
 
 ## Files
 
