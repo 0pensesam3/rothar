@@ -233,7 +233,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 21:40</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 11 Oct, 22:45</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.</div>
     <div id="history-list"></div>
@@ -928,7 +928,8 @@ function buildNavSteps(walkIn, cycle, walkOut, pickup, dropoff, fromLeg='walk') 
   const all = [];
   const add = (route, legType) => {
     if (!route) return;
-    route.legs.forEach(leg => leg.steps.forEach(s => all.push({...s, legType})));
+    // skip the router's own 'arrive' steps; the synthetic pickup/dropoff/arrival steps replace them
+    route.legs.forEach(leg => leg.steps.forEach(s => { if (s.maneuver?.type !== 'arrive') all.push({...s, legType}); }));
   };
   if (fromLeg !== 'cycle') {
     add(walkIn, 'walk');
@@ -945,30 +946,58 @@ function legCardClass(t) {
   if (t==='cycle') return 'cycle'; if (t==='pickup') return 'pickup'; if (t==='dropoff') return 'dropoff'; return 'walk';
 }
 
+function stepLabel(step) {
+  if (step._synthetic) return step._label;
+  return step._instruction || stepText(step);
+}
+
+function stepIconFor(step) {
+  if (step._synthetic) return step.legType === 'pickup' ? '🚲' : step.legType === 'dropoff' ? '🅿' : '📍';
+  return stepIcon(step.maneuver.type, step.maneuver.modifier);
+}
+
+// The card shows the NEXT manoeuvre ("Turn left onto X") and the live distance to it.
+// The line under it says what to do until then ("Bike west on Bethnal Green Road").
 function updateNavCard() {
-  const step = NAV.steps[NAV.current];
-  if (!step) return;
+  const cur = NAV.steps[NAV.current];
+  if (!cur) return;
+  const target = NAV.steps[NAV.current + 1] || cur;
   const total = NAV.steps.length;
-  let icon, primary, road = '', dist = '';
-  if (step._synthetic) {
-    icon = step.legType==='pickup'?'🚲':step.legType==='dropoff'?'🅿':'📍';
-    primary = step._label;
-  } else {
-    icon = stepIcon(step.maneuver.type, step.maneuver.modifier);
-    primary = step._instruction || stepText(step);
-    road = step.name||'';
-    if (step.distance > 8) dist = fmtDist(step.distance);
+
+  let dist = '';
+  if (NAV.userLat !== undefined && target.maneuver?.location) {
+    const [tLon, tLat] = target.maneuver.location;
+    dist = fmtDist(haversine(NAV.userLat, NAV.userLon, tLat, tLon));
+  } else if (cur.distance > 8) {
+    dist = fmtDist(cur.distance);
   }
-  document.getElementById('nav-maneuver').textContent  = icon;
-  document.getElementById('nav-primary').textContent   = primary;
-  document.getElementById('nav-road').textContent      = road;
+
+  const now = cur._synthetic ? '' : (cur.maneuver.type === 'depart' || cur.maneuver.type === 'continue')
+    ? stepLabel(cur).replace(/\.$/, '')
+    : (cur.name ? `On ${cur.name}` : '');
+
+  document.getElementById('nav-maneuver').textContent  = stepIconFor(target);
+  document.getElementById('nav-primary').textContent   = stepLabel(target);
+  document.getElementById('nav-road').textContent      = now;
   document.getElementById('nav-dist').textContent      = dist;
-  document.getElementById('nav-card').className        = legCardClass(step.legType);
+  document.getElementById('nav-card').className        = legCardClass(target.legType === 'walk' && cur.legType === 'cycle' ? 'cycle' : target.legType);
   document.getElementById('nav-step-label').textContent = `Step ${NAV.current+1} / ${total}`;
   document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/(total-1))*100)}%`;
   const remSecs = NAV.steps.slice(NAV.current).reduce((s,st)=>s+(st.duration||0),0);
   document.getElementById('nav-eta-label').textContent = remSecs>0?`~${fmtTime(remSecs)} left`:'';
 }
+
+// Keep the screen on while navigating (supported on iPhone from iOS 16.4)
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && NAV.active && !NAV.wakeLock) {
+      NAV.wakeLock = await navigator.wakeLock.request('screen');
+      NAV.wakeLock.addEventListener('release', () => { NAV.wakeLock = null; });
+    }
+  } catch(e) { console.warn('Wake lock unavailable:', e.message); }
+}
+function releaseWakeLock() { try { NAV.wakeLock?.release(); } catch(e) {} NAV.wakeLock = null; }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NAV.active) requestWakeLock(); });
 
 // Point S.pickup / S.dropoff at the freshly loaded station objects
 function syncJourneyStations() {
@@ -1030,11 +1059,13 @@ async function doProximityRefresh(force) {
 
 function onNavPosition(pos) {
   const {latitude:lat, longitude:lon} = pos.coords;
+  NAV.userLat = lat; NAV.userLon = lon;
   const dotHTML = `<div style="width:16px;height:16px;border-radius:50%;background:#1d4ed8;border:3px solid white;box-shadow:0 2px 8px rgba(29,78,216,0.55)"></div>`;
   const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[16,16],iconAnchor:[8,8]});
   if (NAV.userMarker) NAV.userMarker.setLatLng([lat,lon]);
   else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000}).addTo(map);
-  map.panTo([lat,lon],{animate:true,duration:0.5});
+  if (!NAV.zoomed) { map.setView([lat,lon], 17, {animate:true}); NAV.zoomed = true; }
+  else map.panTo([lat,lon],{animate:true,duration:0.5});
 
 
   // Auto-advance steps
@@ -1063,7 +1094,9 @@ function onNavPosition(pos) {
 function startNavigation() {
   if (!S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
   NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
-  NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null;
+  NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null; NAV.zoomed = false;
+  NAV.userLat = NAV.userLon = undefined;
+  requestWakeLock();
   renderStations();
   logJourneyStart();
   document.getElementById('search-panel').classList.add('nav-active');
@@ -1091,6 +1124,7 @@ function stopNavigation() {
   hideAvailAlert();
   clearNavAlternatives();
   logJourneyEnd(NAV.arrived === true);
+  releaseWakeLock();
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
 }
