@@ -562,7 +562,7 @@ function makeRiderIcon() { return L.divIcon({ className: '', html: RIDER_HTML, i
 
 // ─── 3D rider (three.js inside MapLibre), shown in the navigation follow view ─
 const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.min.js';
-const RIDER_METRES = 14;          // model height on the map; larger than life so you can see her
+const RIDER_METRES = 22;          // model height on the map; larger than life so you can see her
 let threeLoading = null;
 function loadThree() {
   if (window.THREE) return Promise.resolve(window.THREE);
@@ -1328,6 +1328,7 @@ function navCamera(lat, lon) {
   if (NAV.view === 'follow') Object.assign(o, { pitch: 50, zoom: 17.6, bearing: NAV.heading ?? ml.getBearing(), padding: { top: h * 0.45, bottom: 0, left: 0, right: 0 } });
   else Object.assign(o, { pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, ...(NAV.zoomed ? {} : { zoom: 16 }) });
   ml.easeTo(o);
+  ml.once('moveend', () => { NAV.lastRotate = 0; updateHeading(); });   // catch up on any turn skipped mid-move
   NAV.zoomed = true;
 }
 
