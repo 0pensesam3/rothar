@@ -1312,7 +1312,8 @@ function updateHeading() {
   // Heading-up camera: rotate at most ~5x a second, ignore tiny jitter
   if (NAV.view === 'follow' && map._ml) {
     const now = Date.now();
-    if (now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
+    // don't interrupt a camera move in progress (that cancels the zoom-in); it already carries the heading
+    if (!map._ml.isEasing() && now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
       NAV.lastRotate = now;
       map._ml.rotateTo(NAV.heading, { duration: 200 });
     }
