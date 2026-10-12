@@ -598,7 +598,7 @@ function makeRiderIcon() { return L.divIcon({ className: '', html: RIDER_HTML, i
 
 // ─── 3D rider (three.js inside MapLibre), shown in the navigation follow view ─
 const THREE_URL = 'https://unpkg.com/three@0.160.0/build/three.min.js';
-const RIDER_METRES = 22;          // model height on the map; larger than life so you can see her
+const RIDER_METRES = 13;          // model height on the map; a bit larger than life so you can still spot her
 let threeLoading = null;
 function loadThree() {
   if (window.THREE) return Promise.resolve(window.THREE);
@@ -1891,7 +1891,7 @@ function setStart(lat, lon, label, isGPS=false) {
     zIndexOffset: 200
   }).addTo(map);
   loadStations();
-  if (!S.end) map.setView([lat,lon],14);
+  if (!S.end) map.setView([lat,lon],15.5);        // close enough that the rider sits in proportion to the streets
 }
 
 function setEnd(lat, lon, label) {
