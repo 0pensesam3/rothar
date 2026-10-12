@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Rothar">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#e31837">
+<link rel="preconnect" href="https://photon.komoot.io" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
@@ -48,6 +49,7 @@ window.L = (() => {
     _remove() { this.m?.remove(); this.m = null; }
     setLatLng(ll) { this.ll = ll; this.m?.setLngLat(ll2(ll)); return this; }
     setRotation(d) { this.rot = d; this.m?.setRotation(d); return this; }
+    setIcon(icon) { this.o.icon = icon; if (this.el) this.el.innerHTML = icon.o.html || ''; return this; }
     getElement() { return this.el; }
   }
 
@@ -150,30 +152,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #header { background: #e31837; color: white; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 #header h1 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 #refresh-badge { font-size: 11px; opacity: 0.8; white-space: nowrap; }
-#refresh-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+#refresh-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 17px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 #refresh-btn.spinning #refresh-icon { animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Search panel ── */
-#search-panel { background: white; padding: 10px 12px; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; }
+/* ── Search card ── */
+#search-panel { background: white; margin: 8px 10px 6px; padding: 10px; border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
 #search-panel.nav-active { display: none; }
 .input-row { display: flex; gap: 6px; align-items: center; }
 .row-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; opacity: 0.7; }
-.input-wrap { flex: 1; position: relative; }
-.search-input { width: 100%; padding: 9px 28px 9px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; background: white; color: #111; transition: border-color 0.15s; }
-.search-input:focus { border-color: #e31837; }
-.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; display: none; line-height: 1; padding: 0; }
+.input-wrap { flex: 1; min-width: 0; position: relative; }
+.search-input { width: 100%; padding: 10px 30px 10px 14px; border: 1.5px solid transparent; border-radius: 22px; font-size: 14px; outline: none; background: #f2f2ef; color: #111; transition: border-color 0.15s, background 0.15s; }
+.search-input:focus { border-color: #e31837; background: white; }
+.clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; display: none; line-height: 1; padding: 0; }
 .clear-btn.visible { display: block; }
-.loc-btn { background: white; color: #e31837; border: 1.5px solid #e31837; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0; font-weight: 500; }
+.loc-btn { flex-shrink: 0; background: white; color: #e31837; border: 1.5px solid #f3c2cb; border-radius: 20px; padding: 9px 10px; cursor: pointer; font-size: 11.5px; white-space: nowrap; font-weight: 600; font-family: inherit; }
 #filter-row, #route-row { display: flex; gap: 6px; }
-.pill-btn { flex: 1; padding: 6px 4px; border: 1.5px solid #ddd; border-radius: 20px; background: white; font-size: 11px; cursor: pointer; color: #777; white-space: nowrap; font-family: inherit; text-align: center; transition: all 0.15s; }
+.pill-btn { flex: 1; padding: 7px 4px; border: 1.5px solid transparent; border-radius: 20px; background: #f2f2ef; font-size: 11px; cursor: pointer; color: #555; white-space: nowrap; font-family: inherit; text-align: center; transition: all 0.15s; }
 .pill-btn.active-red  { background: #e31837; border-color: #e31837; color: white; font-weight: 600; }
 .pill-btn.active-blue { background: #2563eb; border-color: #2563eb; color: white; font-weight: 600; }
-.pill-btn:hover:not(.active-red):not(.active-blue) { border-color: #999; color: #333; }
+.pill-btn:hover:not(.active-red):not(.active-blue) { border-color: #ccc; color: #333; }
 
 /* ── Autocomplete ── */
-.autocomplete-list { position: absolute; top: calc(100% + 2px); left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 8px; z-index: 3000; box-shadow: 0 6px 16px rgba(0,0,0,0.12); max-height: 220px; overflow-y: auto; display: none; }
-.ac-item { padding: 9px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f5f5f5; display: flex; align-items: flex-start; gap: 8px; }
+.autocomplete-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: white; border-radius: 16px; z-index: 3000; box-shadow: 0 8px 24px rgba(0,0,0,0.14); max-height: 230px; overflow-y: auto; display: none; }
+.ac-item { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f3f3f3; display: flex; align-items: flex-start; gap: 8px; }
 .ac-item:last-child { border-bottom: none; }
 .ac-item:hover { background: #fef2f2; }
 .ac-main { font-size: 13px; color: #111; }
@@ -183,21 +185,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #map-wrap { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 #map { height: 100%; width: 100%; }
 #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); color: white; padding: 8px 16px; border-radius: 20px; font-size: 13px; z-index: 2000; display: none; white-space: nowrap; pointer-events: none; max-width: 90%; text-align: center; }
-.map-legend { position: absolute; bottom: 10px; left: 10px; background: white; border-radius: 8px; padding: 8px 10px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
+.map-legend { position: absolute; bottom: 26px; left: 10px; background: white; border-radius: 14px; padding: 8px 11px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
 .leg-row { display: flex; align-items: center; gap: 5px; }
 .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .leg-tfl { font-size: 9.5px; color: #777; border-top: 1px solid #eee; margin-top: 3px; padding-top: 3px; }
+body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
 
-/* ── GPS pulsing pin ── */
-.gps-outer { width: 24px; height: 24px; position: relative; display: flex; align-items: center; justify-content: center; }
-.gps-inner { width: 13px; height: 13px; background: #1d4ed8; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(29,78,216,0.5); position: relative; z-index: 1; }
-.gps-ring  { position: absolute; top: 0; left: 0; width: 24px; height: 24px; border-radius: 50%; background: rgba(29,78,216,0.22); animation: gps-pulse 2s ease-out infinite; }
-@keyframes gps-pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+/* ── Resume banner ── */
+#resume-banner { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 2100; background: white; border-radius: 18px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); padding: 10px 10px 10px 14px; display: none; align-items: center; gap: 10px; font-size: 13px; color: #111; }
+#resume-banner.visible { display: flex; }
+#resume-text { flex: 1; line-height: 1.35; }
+#resume-go { background: #e31837; color: white; border: none; border-radius: 18px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#resume-x { background: none; border: none; font-size: 20px; color: #888; cursor: pointer; line-height: 1; padding: 0 4px; }
 
 /* ── Nav overlay ── */
-#nav-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1500; display: none; flex-direction: column; pointer-events: none; }
+#nav-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1500; display: none; flex-direction: column; pointer-events: none; padding: 8px 8px 0; }
 #nav-overlay.active { display: flex; }
-#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; }
+#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; border-radius: 20px 20px 0 0; }
 #nav-card.walk    { background: #1e1b4b; }
 #nav-card.cycle   { background: #7f1d1d; }
 #nav-card.pickup  { background: #14532d; }
@@ -210,22 +214,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #nav-dist    { font-size: 26px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
 #nav-bar { height: 3px; background: rgba(255,255,255,0.2); margin-top: 10px; border-radius: 2px; }
 #nav-bar-fill { height: 100%; background: white; border-radius: 2px; transition: width 0.5s; }
-#nav-meta { background: rgba(0,0,0,0.6); padding: 7px 14px; display: flex; align-items: center; justify-content: space-between; pointer-events: auto; }
-#nav-step-label { font-size: 11px; color: rgba(255,255,255,0.7); }
-#nav-eta-label  { font-size: 11px; color: rgba(255,255,255,0.7); }
-#nav-view { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; margin-left: auto; margin-right: 6px; }
+#nav-meta { background: white; padding: 8px 10px 8px 14px; display: flex; align-items: center; gap: 6px; pointer-events: auto; border-radius: 0 0 20px 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.16); }
+#nav-eta { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+#nav-eta-time { font-size: 22px; font-weight: 700; color: #15803d; white-space: nowrap; }
+#nav-eta-sub  { font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#nav-view, #nav-stop { background: #f1f1ee; color: #111; border: none; border-radius: 16px; padding: 7px 11px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap; }
+#nav-station { margin-top: 8px; align-self: flex-start; max-width: 100%; display: none; align-items: center; gap: 8px; background: white; border-radius: 22px; padding: 5px 12px 5px 5px; box-shadow: 0 4px 14px rgba(0,0,0,0.16); font-size: 13px; color: #111; pointer-events: auto; }
+.ns-count { border-radius: 16px; padding: 4px 10px; font-weight: 700; color: white; white-space: nowrap; font-size: 14px; }
+.ns-count.ok { background: #16a34a; } .ns-count.warn { background: #d97706; } .ns-count.bad { background: #dc2626; }
+.ns-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ns-age { font-size: 11px; color: #888; white-space: nowrap; }
 #nav-facing { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
 #nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
-#nav-stop { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
-
-/* ── Walk suggestion banner ── */
-#walk-banner { display: none; background: #f0fdf4; border-top: 2px solid #16a34a; padding: 12px 16px; flex-shrink: 0; align-items: center; gap: 10px; }
-#walk-banner.visible { display: flex; }
-#walk-banner p { flex: 1; font-size: 13px; color: #14532d; line-height: 1.4; }
-#walk-anyway-btn { background: white; border: 1.5px solid #16a34a; color: #166534; border-radius: 8px; padding: 7px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; font-family: inherit; font-weight: 500; }
 
 /* ── Availability popup ── */
-#avail-popup { position: absolute; bottom: 16px; left: 12px; right: 12px; background: white; border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
+#avail-popup { position: absolute; bottom: 16px; left: 12px; right: 12px; background: white; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
 #avail-popup.visible { display: block; }
 #avail-popup-head { padding: 12px 14px 8px; background: #fffbeb; border-bottom: 1px solid #fde68a; display: flex; align-items: center; gap: 8px; }
 #avail-popup-title { font-size: 14px; font-weight: 600; color: #78350f; flex: 1; }
@@ -233,53 +236,59 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #avail-popup-body { padding: 10px 14px 4px; font-size: 13px; color: #374151; line-height: 1.5; }
 #avail-popup-likelihood { padding: 6px 14px 10px; font-size: 12px; font-weight: 500; }
 #avail-popup-actions { display: flex; gap: 8px; padding: 0 14px 14px; }
-.avail-act { flex: 1; padding: 10px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; }
+.avail-act { flex: 1; padding: 10px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; }
 #avail-wait   { background: #f3f4f6; color: #111; }
 #avail-reroute { background: #e31837; color: white; }
 
 /* ── Activity panel ── */
-#history-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 8px; height: 34px; padding: 0 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#history-btn { background: rgba(255,255,255,0.18); border: 1.5px solid rgba(255,255,255,0.4); color: white; border-radius: 17px; height: 34px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
 #history-panel { position: fixed; inset: 0; background: #f5f4f0; z-index: 5000; display: none; flex-direction: column; padding-top: env(safe-area-inset-top); }
 #history-panel.visible { display: flex; }
 #history-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: white; border-bottom: 1px solid #e5e5e5; }
 #history-head h2 { font-size: 15px; font-weight: 600; }
 #history-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #666; line-height: 1; }
 #history-totals { display: flex; gap: 8px; padding: 12px 14px 4px; }
-.hist-total { flex: 1; background: white; border-radius: 10px; padding: 10px 12px; }
+.hist-total { flex: 1; background: white; border-radius: 16px; padding: 10px 12px; }
 .hist-total b { display: block; font-size: 18px; color: #e31837; }
 .hist-total span { font-size: 11px; color: #777; }
 #history-list { flex: 1; overflow-y: auto; padding: 8px 14px 16px; }
-.hist-item { background: white; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; color: #222; }
+.hist-item { background: white; border-radius: 16px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; color: #222; }
 .hist-route { font-weight: 600; }
 .hist-meta { font-size: 11px; color: #777; margin-top: 3px; line-height: 1.5; }
 .hist-empty { font-size: 13px; color: #777; text-align: center; padding: 30px 10px; line-height: 1.5; }
 .hist-note { font-size: 11px; color: #999; padding: 0 14px 12px; }
 
-/* ── Start button + journey panel ── */
-#start-nav-btn { display: none; width: calc(100% - 28px); margin: 10px 14px; padding: 12px; background: #e31837; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
-#start-nav-btn.visible { display: block; }
-#journey-panel { background: white; border-top: 2px solid #e31837; max-height: 210px; overflow-y: auto; flex-shrink: 0; display: none; }
+/* ── Journey sheet ── */
+#journey-panel { background: white; max-height: 240px; overflow-y: auto; flex-shrink: 0; display: none; position: relative; z-index: 1700; margin-top: -18px; border-radius: 22px 22px 0 0; box-shadow: 0 -4px 18px rgba(0,0,0,0.10); }
+#journey-panel::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: #ddd; margin: 8px auto 0; }
 #journey-panel.visible { display: block; }
 #journey-panel.nav-active { display: none; }
-#journey-summary { padding: 10px 14px; background: #fef2f2; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #fecaca; position: sticky; top: 0; }
-.sum-chip { font-size: 12px; background: white; border-radius: 6px; padding: 3px 8px; color: #374151; border: 1px solid #f0c0c0; white-space: nowrap; }
+#start-nav-btn { display: none; width: calc(100% - 28px); margin: 8px 14px 6px; padding: 12px; background: #e31837; color: white; border: none; border-radius: 24px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#start-nav-btn.visible { display: block; }
+#start-nav-btn.walk { background: #16a34a; }
+#journey-summary { padding: 6px 14px 10px; background: white; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #f0f0ee; position: sticky; top: 0; }
+.sum-chip { font-size: 12px; background: #f5f4f0; border-radius: 14px; padding: 4px 10px; color: #374151; white-space: nowrap; }
 .sum-chip strong { color: #e31837; }
-#steps-list { padding: 4px 0 8px; }
+.sum-chip.walk-chip { background: #dcfce7; }
+.sum-chip.walk-chip strong { color: #166534; }
+#steps-list { padding: 4px 0 10px; }
 .step-header { padding: 8px 14px 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #e31837; display: flex; align-items: center; gap: 6px; }
+.step-header.walk { color: #16a34a; }
 .step-header-line { flex: 1; height: 1px; background: #fecaca; }
+.step-header.walk .step-header-line { background: #bbf7d0; }
 .step-row { display: flex; gap: 10px; padding: 4px 14px; font-size: 13px; color: #333; align-items: baseline; }
 .step-ic { width: 18px; text-align: center; flex-shrink: 0; }
 .step-txt { flex: 1; line-height: 1.45; }
 .step-d { font-size: 11px; color: #999; white-space: nowrap; }
 .avail-row { display: flex; gap: 5px; padding: 3px 14px 5px; flex-wrap: wrap; }
-.avail-chip { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.avail-chip { font-size: 11px; padding: 2px 9px; border-radius: 10px; font-weight: 500; }
 .chip-std   { background: #dcfce7; color: #166534; }
 .chip-ebike { background: #dbeafe; color: #1e40af; }
 .chip-none  { background: #fee2e2; color: #991b1b; }
-.leaflet-popup-content { margin: 8px 10px; }
+.maplibregl-popup-content { border-radius: 14px; }
 .popup-name { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
 .popup-avail { display: flex; gap: 4px; flex-wrap: wrap; }
-.p-chip { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+.p-chip { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
 .route-alt-ring { width:22px;height:22px;border-radius:50%;border:3px solid #f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.3);display:flex;align-items:center;justify-content:center;background:white; }
 </style>
 </head>
@@ -303,11 +312,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   <div class="input-row">
     <span class="row-icon">●</span>
     <div class="input-wrap">
-      <input id="from-input" class="search-input" type="text" placeholder="Start — tap 📡 or type an address" autocomplete="off"/>
+      <input id="from-input" class="search-input" type="text" placeholder="Starting point" autocomplete="off"/>
       <button class="clear-btn" id="from-clear">×</button>
       <div class="autocomplete-list" id="from-ac"></div>
     </div>
-    <button class="loc-btn" id="loc-btn">📡 Me</button>
+    <button class="loc-btn" id="loc-btn">📍 Use my current location</button>
   </div>
   <div class="input-row">
     <span class="row-icon">▲</span>
@@ -333,6 +342,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   <div id="map"></div>
   <div id="toast"></div>
 
+  <div id="resume-banner">
+    <div id="resume-text"></div>
+    <button id="resume-go">Resume</button>
+    <button id="resume-x">×</button>
+  </div>
+
   <div id="nav-overlay">
     <div id="nav-card" class="walk">
       <div id="nav-top">
@@ -346,11 +361,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
       <div id="nav-bar"><div id="nav-bar-fill" style="width:0%"></div></div>
     </div>
     <div id="nav-meta">
-      <span id="nav-step-label">Step 1</span>
-      <span id="nav-eta-label">Calculating…</span>
-      <button id="nav-view">🧭 North up</button>
+      <div id="nav-eta"><span id="nav-eta-time">–</span><span id="nav-eta-sub"></span></div>
+      <button id="nav-view">🧭 Facing</button>
       <button id="nav-stop">✕ End</button>
     </div>
+    <div id="nav-station"></div>
   </div>
 
   <div id="nav-facing"></div>
@@ -369,7 +384,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 01:00</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 23:50</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
@@ -384,11 +399,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
     <div class="leg-row"><div class="leg-dot" style="background:#dc2626"></div> Empty</div>
     <div class="leg-tfl">Powered by TfL Open Data</div>
   </div>
-</div>
-
-<div id="walk-banner">
-  <p id="walk-banner-text">🚶 Short walk — no bike needed!</p>
-  <button id="walk-anyway-btn">Bike anyway</button>
 </div>
 
 <div id="journey-panel">
@@ -416,16 +426,17 @@ const DOCK_OVERHEAD  = 90;    // s — releasing a bike at the dock plus docking
 const DETOUR         = 1.3;   // straight-line → street distance, for estimates only
 const PROXIMITY_SECS = 300;   // s — start watching a station when this close to it
 const PROXIMITY_EVERY = 15;   // s — how often to re-check it in that window
+const RESUME_MAX_AGE = 3 * 3600 * 1000;   // ms — offer to resume a trip for this long after it was last seen
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const S = {
   stations: [], start: null, end: null,
   pickup: null, dropoff: null,
   walkIn: null, cycle: null, walkOut: null,
+  walkOnly: null,        // direct walking route when walking beats the bike
   lastRefresh: null, journeyActive: false,
   bikeFilter: 'any', routeType: 'balanced',
   startIsGPS: false,
-  forceShowBike: false,  // set when user clicks "Bike anyway"
 };
 
 const NAV = {
@@ -457,10 +468,12 @@ function fmtTime(s) {
   const m = Math.round(s/60);
   return m < 1 ? '< 1 min' : m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${m%60}m`;
 }
+function clock(ms) { return new Date(ms).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); }
 function prop(station, key) {
   const p = (station.additionalProperties||[]).find(x => x.key === key);
   return p ? (parseInt(p.value)||0) : 0;
 }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 let toastTimer;
 function toast(msg, dur=3000) {
@@ -483,7 +496,7 @@ async function loadStations(fromButton=false) {
     renderStations();
     updateBadge();
     if (fromButton) toast('');
-    if (NAV.active) syncJourneyStations();
+    if (NAV.active) { syncJourneyStations(); renderNavAlternatives(); updateNavCard(); }
     else if (S.start && S.end) planJourney(true);
   } catch(e) {
     toast(`⚠ Station data error: ${e.message}`, 6000);
@@ -538,15 +551,19 @@ function makeStationIcon(bikes, ebikes, sz=16) {
   });
 }
 
-function makeNavPinIcon(emoji, color) {
+// Pick-up / return pin, with a live count badge (bikes at pick-up, free docks at return)
+function makeNavPinIcon(emoji, color, count) {
+  const bg = count === 0 ? '#dc2626' : count <= LOW_AVAIL ? '#d97706' : '#111';
+  const badge = count == null ? '' : `<span style="position:absolute;top:-8px;right:-10px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:${bg};color:white;font-size:11px;font-weight:700;line-height:16px;text-align:center;border:2px solid white;box-sizing:border-box;">${count}</span>`;
   return L.divIcon({
     className: '',
-    html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;">${emoji}</div>`,
+    html: `<div style="position:relative;width:28px;height:28px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;">${emoji}${badge}</div>`,
     iconSize: [28,28], iconAnchor: [14,14]
   });
 }
+const pickupIcon  = st => makeNavPinIcon('🚲', '#16a34a', usableBikes(st));
+const dropoffIcon = st => makeNavPinIcon('🅿', '#7c3aed', prop(st,'NbEmptyDocks'));
 
-// GPS pulsing blue dot — distinct from typed address pin
 // Amber-ringed alternative station icon shown during navigation
 function makeAltStationIcon(bikes, ebikes) {
   const col = stationColor(bikes, ebikes);
@@ -642,16 +659,12 @@ function makeRiderLayer(THREE) {
   };
 }
 
-// Which way she points: your heading if known, else the direction of the route ahead
-function riderHeading() {
-  if (NAV.heading != null) return NAV.heading;
-  const a = NAV.userLat !== undefined && aheadPoint(NAV.userLat, NAV.userLon);
-  return a ? bearingTo(NAV.userLat, NAV.userLon, a.lat, a.lon) : 0;
-}
+// Which way she points: smoothed heading if known, else the direction of the route ahead
+function riderHeading() { return NAV.dispHeading ?? NAV.aheadBearing ?? 0; }
 
 function syncRider() {
-  const L3 = NAV.rider3d; if (!L3 || NAV.userLat === undefined) return;
-  L3.pos = [NAV.userLon, NAV.userLat]; L3.heading = riderHeading();
+  const L3 = NAV.rider3d; if (!L3 || NAV.dispLat == null) return;
+  L3.pos = [NAV.dispLon, NAV.dispLat]; L3.heading = riderHeading();
   L3.visible = NAV.view === 'follow';
   const el = NAV.riderMarker?.getElement(); if (el) el.style.visibility = L3.visible ? 'hidden' : 'visible';
   map._ml.triggerRepaint();
@@ -684,6 +697,9 @@ function makeTypedStartIcon() {
     html: `<div style="width:14px;height:14px;border-radius:50%;background:#e31837;border:3px solid white;box-shadow:0 2px 6px rgba(227,24,55,0.4)"></div>`,
     iconSize: [14,14], iconAnchor: [7,7]
   });
+}
+function makeEndIcon() {
+  return L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#7c3aed;border:3px solid white;box-shadow:0 2px 6px rgba(124,58,237,0.4)"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
 }
 
 function availabilityHTML(station) {
@@ -734,7 +750,7 @@ function bestDropoff(pLat, pLon, eLat, eLon, excludeId, minCount=1) {
   return { station: best, dist: best ? haversine(best.lat,best.lon,eLat,eLon) : 0 };
 }
 
-// ─── Routing — Valhalla for cycling (3 modes), TfL Journey API for walking ───
+// ─── Routing — Valhalla for cycling (3 modes) and walking, OSRM fallback ──────
 
 function decodePolyline6(str) {
   // Valhalla uses precision-6 encoded polyline
@@ -755,7 +771,6 @@ function decodePolyline6(str) {
 
 function valhallaManeuverToStep(m, coords) {
   const loc = coords[m.begin_shape_index] || coords[0];
-  // Map Valhalla type numbers to readable text via the instruction field
   return {
     maneuver: { type: valhallaType(m.type), modifier: valhallaModifier(m.type), location: loc },
     name: (m.street_names||[]).join(', ')||'',
@@ -787,7 +802,7 @@ function valhallaModifier(t) {
 }
 
 async function fetchCycleRoute(la1, lo1, la2, lo2) {
-  // use_roads: 0.9=fastest (roads), 0.5=balanced, 0.1=quietest (paths/lanes)
+  // use_roads: 0.9=fastest (roads), 0.5=balanced, 0.0=quietest (paths/lanes)
   const useRoads = S.routeType === 'fastest' ? 0.9 : S.routeType === 'quietest' ? 0.0 : 0.5;
   try {
     const res = await fetch(VALHALLA + '?json=' + encodeURIComponent(JSON.stringify({
@@ -877,32 +892,52 @@ function walkIsFaster(pickup, dropoff) {
   return { yes: walkSecs - bikeSecs < MIN_BIKE_SAVING, dist: direct, walkSecs, bikeSecs };
 }
 
-function showWalkBanner(dist, secs) {
+// Walking wins: show the walking route with its steps and a Start walking button
+function showWalkPlan(walk) {
   track('walk-suggested', 'Walk suggested instead of bike');
-  document.getElementById('walk-banner-text').textContent =
-    `🚶 ${fmtDist(dist)} on foot, about ${fmtTime(secs)}. The bike wouldn't save you a minute.`;
-  document.getElementById('walk-banner').classList.add('visible');
-  document.getElementById('journey-panel').classList.remove('visible');
-  document.getElementById('start-nav-btn').classList.remove('visible');
-  // Clear any route lines and station pins from a bike plan
-  routeLayer.clearLayers();
-  [markerPickup,markerDropoff].forEach(m => m && map.removeLayer(m));
+  S.walkOnly = walk; S.pickup = S.dropoff = null; S.walkIn = S.cycle = S.walkOut = null;
+  S.journeyActive = true;
+  drawLine(walk.geometry.coordinates, '#16a34a', true);
+  map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
+  document.getElementById('journey-summary').innerHTML = `
+    <div class="sum-chip walk-chip"><strong>🚶 Faster to walk</strong></div>
+    <div class="sum-chip">${fmtTime(walk.duration)} · ${fmtDist(walk.distance)}</div>
+    <div class="sum-chip">Arrive ${clock(Date.now() + walk.duration*1000)}</div>`;
+  let steps = `<div class="step-header walk">Here's the walking route <span class="step-header-line"></span> ${fmtDist(walk.distance)}</div>`;
+  steps += buildStepRows(walk);
+  steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${esc(S.end.label)}</span></div>`;
+  document.getElementById('steps-list').innerHTML = steps;
+  const btn = document.getElementById('start-nav-btn');
+  btn.textContent = '▶  Start walking'; btn.classList.add('walk', 'visible');
+  document.getElementById('journey-panel').classList.add('visible');
+  toast('');
 }
 
-// Fetch and draw the direct walking route, then show the banner
+// Estimate said walk: fetch the real walking route and show it
 async function showWalkOption(estSecs) {
-  const dist = haversine(S.start.lat, S.start.lon, S.end.lat, S.end.lon);
   let walk = null;
   try { walk = await fetchWalkRoute(S.start.lat, S.start.lon, S.end.lat, S.end.lon); } catch(e) {}
-  showWalkBanner(walk ? walk.distance : dist, walk ? walk.duration : estSecs);
-  if (walk) drawLine(walk.geometry.coordinates, '#16a34a', true);
-  S.walkIn = S.cycle = S.walkOut = null;
+  if (walk) { showWalkPlan(walk); return; }
+  const dist = haversine(S.start.lat, S.start.lon, S.end.lat, S.end.lon) * DETOUR;
+  document.getElementById('journey-summary').innerHTML = `
+    <div class="sum-chip walk-chip"><strong>🚶 Faster to walk</strong></div>
+    <div class="sum-chip">about ${fmtTime(estSecs)} · ${fmtDist(dist)}</div>`;
+  document.getElementById('steps-list').innerHTML = `<div class="step-row"><span class="step-txt">Walking directions are unavailable right now. Try again in a moment.</span></div>`;
+  document.getElementById('start-nav-btn').classList.remove('visible');
+  document.getElementById('journey-panel').classList.add('visible');
   map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
   toast('');
 }
 
-function hideWalkBanner() {
-  document.getElementById('walk-banner').classList.remove('visible');
+// Remove the current plan from the map and the sheet
+function clearPlan() {
+  routeLayer.clearLayers();
+  if (markerPickup)  { map.removeLayer(markerPickup);  markerPickup = null; }
+  if (markerDropoff) { map.removeLayer(markerDropoff); markerDropoff = null; }
+  S.walkIn = S.cycle = S.walkOut = S.walkOnly = null;
+  S.journeyActive = false;
+  document.getElementById('journey-panel').classList.remove('visible');
+  document.getElementById('start-nav-btn').classList.remove('visible');
 }
 
 // ─── Plan journey ─────────────────────────────────────────────────────────────
@@ -910,8 +945,7 @@ async function planJourney(silent=false) {
   if (!S.start || !S.end || !S.stations.length) return;
 
   if (!silent) toast('Planning your journey…', 0);
-  routeLayer.clearLayers();
-  [markerPickup,markerDropoff].forEach(m => m && map.removeLayer(m));
+  clearPlan();
 
   // Seed dropoff, then optimise both stations
   const seedDrop = S.stations.reduce((b,s) => {
@@ -927,44 +961,35 @@ async function planJourney(silent=false) {
   const {station:dropoff, dist:woDist} = bestDropoff(pickup.lat,pickup.lon, S.end.lat,S.end.lon);
   if (!dropoff) { toast('⚠ No docking spaces near destination.',4000); return; }
 
-  // Walk vs bike, first pass (estimate). Skipped after "Bike anyway".
-  hideWalkBanner();
-  const forced = S.forceShowBike;
+  // Walk vs bike, first pass (estimate)
   const est = walkIsFaster(pickup, dropoff);
-  if (!forced && est.yes) { await showWalkOption(est.walkSecs); return; }
+  if (est.yes) { await showWalkOption(est.walkSecs); return; }
 
-  S.pickup = pickup; S.dropoff = dropoff; S.journeyActive = true;
-
-  markerPickup  = L.marker([pickup.lat,pickup.lon],   {icon:makeNavPinIcon('🚲','#16a34a'),zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Pick up here</div><div class="popup-avail">${availabilityHTML(pickup)}</div>`);
-  markerDropoff = L.marker([dropoff.lat,dropoff.lon], {icon:makeNavPinIcon('🅿','#7c3aed'), zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Return here</div><div class="popup-avail">${availabilityHTML(dropoff)}</div>`);
-
-  let walkIn, cycle, walkOut;
   const [wiRes, cyRes, woRes, dwRes] = await Promise.allSettled([
     fetchWalkRoute(S.start.lat,S.start.lon, pickup.lat,pickup.lon),
     fetchCycleRoute(pickup.lat,pickup.lon,  dropoff.lat,dropoff.lon),
     fetchWalkRoute(dropoff.lat,dropoff.lon,  S.end.lat,S.end.lon),
-    forced ? Promise.resolve(null) : fetchWalkRoute(S.start.lat,S.start.lon, S.end.lat,S.end.lon),
+    fetchWalkRoute(S.start.lat,S.start.lon, S.end.lat,S.end.lon),
   ]);
-  walkIn  = wiRes.status === 'fulfilled' ? wiRes.value : null;
-  cycle   = cyRes.status === 'fulfilled' ? cyRes.value : null;
-  walkOut = woRes.status === 'fulfilled' ? woRes.value : null;
-  if (!walkIn || !walkOut) toast('Walking route unavailable — distances estimated.',3000);
-  if (!cycle)  toast('Cycling route unavailable — distance estimated.',3000);
+  const walkIn  = wiRes.status === 'fulfilled' ? wiRes.value : null;
+  const cycle   = cyRes.status === 'fulfilled' ? cyRes.value : null;
+  const walkOut = woRes.status === 'fulfilled' ? woRes.value : null;
 
   // Walk vs bike, second pass (real routed times, including dock time)
   const directWalk = dwRes.status === 'fulfilled' ? dwRes.value : null;
-  if (!forced && directWalk && walkIn && cycle && walkOut) {
+  if (directWalk && walkIn && cycle && walkOut) {
     const bikeSecs = walkIn.duration + cycle.duration + walkOut.duration + DOCK_OVERHEAD;
-    if (directWalk.duration - bikeSecs < MIN_BIKE_SAVING) {
-      showWalkBanner(directWalk.distance, directWalk.duration);
-      drawLine(directWalk.geometry.coordinates, '#16a34a', true);
-      S.walkIn = S.cycle = S.walkOut = null;
-      toast('');
-      return;
-    }
+    if (directWalk.duration - bikeSecs < MIN_BIKE_SAVING) { showWalkPlan(directWalk); return; }
   }
 
+  if (!walkIn || !walkOut) toast('Walking route unavailable, so distances are estimated.',3000);
+  if (!cycle)  toast('Cycling route unavailable, so distance is estimated.',3000);
+
+  S.pickup = pickup; S.dropoff = dropoff; S.journeyActive = true;
   S.walkIn = walkIn; S.cycle = cycle; S.walkOut = walkOut;
+
+  markerPickup  = L.marker([pickup.lat,pickup.lon],   {icon:pickupIcon(pickup),   zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Pick up here</div><div class="popup-avail">${availabilityHTML(pickup)}</div>`);
+  markerDropoff = L.marker([dropoff.lat,dropoff.lon], {icon:dropoffIcon(dropoff), zIndexOffset:500}).addTo(map).bindPopup(`<div class="popup-name">Return here</div><div class="popup-avail">${availabilityHTML(dropoff)}</div>`);
 
   if (walkIn)  drawLine(walkIn.geometry.coordinates,  '#6366f1', true);
   if (cycle)   drawLine(cycle.geometry.coordinates,   '#e31837', false);
@@ -1008,6 +1033,7 @@ function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   const empty = prop(dropoff,'NbEmptyDocks');
   document.getElementById('journey-summary').innerHTML = `
     <div class="sum-chip"><strong>~${fmtTime(total)} total</strong></div>
+    <div class="sum-chip">Arrive ${clock(Date.now() + total*1000)}</div>
     <div class="sum-chip">🚶 ${walkIn?fmtTime(walkIn.duration):fmtDist(wiDist)}</div>
     <div class="sum-chip">🚲 ${cycle?fmtTime(cycle.duration):'?'} · ${cDist}</div>
     <div class="sum-chip">🚶 ${walkOut?fmtTime(walkOut.duration):fmtDist(woDist)}</div>`;
@@ -1021,10 +1047,11 @@ function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   steps += `<div class="step-row"><span class="step-ic">🅿</span><span class="step-txt">${dropoff.commonName} · ${empty} empty dock${empty!==1?'s':''}</span></div>`;
   steps += `<div class="step-header">🟣 Walk to destination <span class="step-header-line"></span> ${fmtDist(woDist)}</div>`;
   steps += buildStepRows(walkOut);
-  steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${S.end.label}</span></div>`;
+  steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${esc(S.end.label)}</span></div>`;
   document.getElementById('steps-list').innerHTML = steps;
+  const btn = document.getElementById('start-nav-btn');
+  btn.textContent = '▶  Start navigation'; btn.classList.remove('walk'); btn.classList.add('visible');
   document.getElementById('journey-panel').classList.add('visible');
-  document.getElementById('start-nav-btn').classList.add('visible');
 }
 
 // ─── Step text ────────────────────────────────────────────────────────────────
@@ -1055,14 +1082,14 @@ function estimateLikelihood(station, type) {
   const isRush    = !isWeekend && ((h>=7&&h<=9)||(h>=17&&h<=19));
   const isQuiet   = h >= 22 || h <= 6;
 
-  if (isQuiet) return { text: 'Very unlikely soon — very few people cycling at this hour.', color:'#dc2626', wait:'15+ min' };
-  if (isRush && capacity >= 10) return { text: 'Good chance — high turnover during rush hour.', color:'#16a34a', wait:'2–5 min' };
-  if (isRush)  return { text: 'Possible — moderate activity at this station.', color:'#d97706', wait:'5–10 min' };
-  return { text: 'Uncertain — normal daytime activity, hard to predict.', color:'#d97706', wait:'5–15 min' };
+  if (isQuiet) return { text: 'Very unlikely soon. Very few people are cycling at this hour.', color:'#dc2626', wait:'15+ min' };
+  if (isRush && capacity >= 10) return { text: 'Good chance. High turnover during rush hour.', color:'#16a34a', wait:'2–5 min' };
+  if (isRush)  return { text: 'Possible. Moderate activity at this station.', color:'#d97706', wait:'5–10 min' };
+  return { text: 'Uncertain. Normal daytime activity, hard to predict.', color:'#d97706', wait:'5–15 min' };
 }
 
 function showAvailAlert(station, type) {
-  const bikes = prop(station,'NbBikes'), docks = prop(station,'NbEmptyDocks');
+  const docks = prop(station,'NbEmptyDocks');
   const count = type === 'bike' ? usableBikes(station) : docks;
   const thing = type === 'bike' ? 'bike' : 'dock';
   const lh = estimateLikelihood(station, type);
@@ -1137,23 +1164,41 @@ async function rerouteStation() {
   redrawJourney();
   renderNavAlternatives();
   updateNavCard();
+  saveNavState();
 }
 
 // Redraw lines and pickup/dropoff pins from the current S state
 function redrawJourney() {
   routeLayer.clearLayers();
+  if (S.walkOnly) { drawLine(S.walkOnly.geometry.coordinates, '#16a34a', true); return; }
   if (S.walkIn)  drawLine(S.walkIn.geometry.coordinates,  '#6366f1', true);
   if (S.cycle)   drawLine(S.cycle.geometry.coordinates,   '#e31837', false);
   if (S.walkOut) drawLine(S.walkOut.geometry.coordinates, '#6366f1', true);
-  if (markerPickup)  markerPickup.setLatLng([S.pickup.lat, S.pickup.lon]);
-  if (markerDropoff) markerDropoff.setLatLng([S.dropoff.lat, S.dropoff.lon]);
+  if (S.pickup) {
+    if (markerPickup) markerPickup.setLatLng([S.pickup.lat, S.pickup.lon]);
+    else markerPickup = L.marker([S.pickup.lat,S.pickup.lon], {icon:pickupIcon(S.pickup), zIndexOffset:500}).addTo(map);
+  }
+  if (S.dropoff) {
+    if (markerDropoff) markerDropoff.setLatLng([S.dropoff.lat, S.dropoff.lon]);
+    else markerDropoff = L.marker([S.dropoff.lat,S.dropoff.lon], {icon:dropoffIcon(S.dropoff), zIndexOffset:500}).addTo(map);
+  }
+  NAV.pinKey = null; updateJourneyPins();
+}
+
+// Keep the count badges on the pick-up and return pins current
+function updateJourneyPins() {
+  const key = `${S.pickup ? usableBikes(S.pickup) : '-'}|${S.dropoff ? prop(S.dropoff,'NbEmptyDocks') : '-'}`;
+  if (key === NAV.pinKey) return;
+  NAV.pinKey = key;
+  if (markerPickup && S.pickup)   markerPickup.setIcon(pickupIcon(S.pickup));
+  if (markerDropoff && S.dropoff) markerDropoff.setIcon(dropoffIcon(S.dropoff));
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 // Show amber-ringed alternative stations near pickup and dropoff during navigation
 function renderNavAlternatives() {
   navAltLayer.clearLayers();
-  if (!S.pickup || !S.dropoff) return;
+  if (!NAV.active || !S.pickup || !S.dropoff) return;
   const ALT_RADIUS = 350; // metres
   const shown = new Set([S.pickup.id, S.dropoff.id]);
   S.stations.forEach(s => {
@@ -1195,6 +1240,14 @@ function buildNavSteps(walkIn, cycle, walkOut, pickup, dropoff, fromLeg='walk') 
   return all;
 }
 
+// Walking-only trip: the route's steps plus the arrival
+function buildWalkSteps(walk) {
+  const all = [];
+  walk.legs.forEach(leg => leg.steps.forEach(s => { if (s.maneuver?.type !== 'arrive') all.push({...s, legType:'walk'}); }));
+  all.push({ legType:'walk', _synthetic:true, _label:`Arrived at ${S.end.label}`, maneuver:{type:'arrive',location:[S.end.lon,S.end.lat]}, distance:0, duration:0 });
+  return all;
+}
+
 function legCardClass(t) {
   if (t==='cycle') return 'cycle'; if (t==='pickup') return 'pickup'; if (t==='dropoff') return 'dropoff'; return 'walk';
 }
@@ -1209,9 +1262,28 @@ function stepIconFor(step) {
   return stepIcon(step.maneuver.type, step.maneuver.modifier);
 }
 
+// Share of the current step still ahead of you, from your distance to the next manoeuvre
+function currentStepFraction() {
+  const cur = NAV.steps[NAV.current], next = NAV.steps[NAV.current + 1];
+  if (!cur || !next?.maneuver?.location || NAV.userLat === undefined || !(cur.distance > 0)) return 1;
+  const [x, y] = next.maneuver.location;
+  return Math.min(1, haversine(NAV.userLat, NAV.userLon, y, x) / cur.distance);
+}
+function remainingSecs() {
+  const cur = NAV.steps[NAV.current]; if (!cur) return 0;
+  const rest = NAV.steps.slice(NAV.current + 1).reduce((s, st) => s + (st.duration || 0), 0);
+  return rest + (cur.duration || 0) * currentStepFraction();
+}
+function remainingMetres() {
+  const cur = NAV.steps[NAV.current]; if (!cur) return 0;
+  const rest = NAV.steps.slice(NAV.current + 1).reduce((s, st) => s + (st.distance || 0), 0);
+  return rest + (cur.distance || 0) * currentStepFraction();
+}
+
 // The card shows the NEXT manoeuvre ("Turn left onto X") and the live distance to it.
 // The line under it says what to do until then ("Bike west on Bethnal Green Road").
 function updateNavCard() {
+  if (!NAV.active) return;
   const cur = NAV.steps[NAV.current];
   if (!cur) return;
   const target = NAV.steps[NAV.current + 1] || cur;
@@ -1234,10 +1306,32 @@ function updateNavCard() {
   document.getElementById('nav-road').textContent      = now;
   document.getElementById('nav-dist').textContent      = dist;
   document.getElementById('nav-card').className        = legCardClass(target.legType === 'walk' && cur.legType === 'cycle' ? 'cycle' : target.legType);
-  document.getElementById('nav-step-label').textContent = `Step ${NAV.current+1} / ${total}`;
-  document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/(total-1))*100)}%`;
-  const remSecs = NAV.steps.slice(NAV.current).reduce((s,st)=>s+(st.duration||0),0);
-  document.getElementById('nav-eta-label').textContent = remSecs>0?`~${fmtTime(remSecs)} left`:'';
+  document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/Math.max(1,total-1))*100)}%`;
+
+  const rem = remainingSecs();
+  document.getElementById('nav-eta-time').textContent = rem >= 30 ? fmtTime(rem) : 'Now';
+  document.getElementById('nav-eta-sub').textContent  = `${fmtDist(remainingMetres())} · arrive ${clock(Date.now() + rem*1000)}`;
+
+  renderNavStation();
+}
+
+// Live count at the station you're heading to, under the nav card
+function renderNavStation() {
+  const el = document.getElementById('nav-station');
+  const nxt = NAV.active ? nextStationStep() : null;
+  const st = nxt ? (nxt.type === 'pickup' ? S.pickup : S.dropoff) : null;
+  if (!st) { el.style.display = 'none'; return; }
+  const isP = nxt.type === 'pickup';
+  const n = isP ? usableBikes(st) : prop(st, 'NbEmptyDocks');
+  const noun = isP ? (S.bikeFilter === 'ebike' ? 'e-bike' : S.bikeFilter === 'standard' ? 'standard bike' : 'bike') : 'dock';
+  const what = `${noun}${n === 1 ? '' : 's'}${isP ? '' : ' free'}`;
+  const eb = isP && S.bikeFilter === 'any' && prop(st, 'NbEBikes') > 0 ? ` (⚡${prop(st, 'NbEBikes')})` : '';
+  const cls = n === 0 ? 'bad' : n <= LOW_AVAIL ? 'warn' : 'ok';
+  const ageS = S.lastRefresh ? (Date.now() - S.lastRefresh) / 1000 : null;
+  const age = ageS == null ? '' : ageS < 60 ? 'live' : `${Math.floor(ageS / 60)}m ago`;
+  el.innerHTML = `<span class="ns-count ${cls}">${isP ? '🚲' : '🅿'} ${n}</span><span class="ns-txt">${what}${eb} at ${esc(st.commonName)}</span><span class="ns-age">${age}</span>`;
+  el.style.display = 'flex';
+  updateJourneyPins();
 }
 
 // ─── Heading, compass and the "in front of you" camera ───────────────────────
@@ -1250,12 +1344,13 @@ function bearingTo(lat1, lon1, lat2, lon2) {
 
 function onOrientation(e) {
   let h = null;
-  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;   // iPhone
-  else if (e.absolute && e.alpha != null) h = (360 - e.alpha) % 360;            // Android
+  if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) h = e.webkitCompassHeading;   // iPhone
+  else if (e.absolute && e.alpha != null) h = (360 - e.alpha) % 360;                                            // Android
   if (h == null) return;
   const so = (screen.orientation && screen.orientation.angle) || 0;
   h = (h + so + 360) % 360;
-  NAV.compass = NAV.compass == null ? h : (NAV.compass + angleDiff(h, NAV.compass) * 0.25 + 360) % 360;  // smooth
+  // Light filter for sensor spikes; the frame loop does the visible smoothing
+  NAV.compass = NAV.compass == null ? h : (NAV.compass + angleDiff(h, NAV.compass) * 0.3 + 360) % 360;
   updateHeading();
 }
 
@@ -1273,12 +1368,13 @@ function stopCompass() {
   NAV.compassOn = false; NAV.compass = null;
 }
 
-// iPhone asks once; this has to run straight from the Start navigation tap
+// iPhone asks for permission; it has to run straight from a tap (Start, Resume, or the 🧭 button)
 function requestCompass() {
   const DOE = window.DeviceOrientationEvent;
   if (DOE && typeof DOE.requestPermission === 'function') {
     DOE.requestPermission().then(s => s === 'granted' ? startCompass()
-      : toast('Compass off: allow Motion & Orientation access to see which way you face', 5000)).catch(() => {});
+      : toast('Compass off: allow Motion & Orientation for this app, then tap 🧭', 5000))
+      .catch(() => toast('Compass unavailable. Tap 🧭 to try again', 4000));
   } else startCompass();
 }
 
@@ -1286,7 +1382,8 @@ function requestCompass() {
 function aheadPoint(lat, lon) {
   const cur = NAV.steps[NAV.current]; if (!cur) return null;
   const pickI = NAV.steps.findIndex(s => s.legType === 'pickup');
-  const route = cur.legType === 'cycle' || cur.legType === 'dropoff' ? S.cycle
+  const route = S.walkOnly ? S.walkOnly
+              : cur.legType === 'cycle' || cur.legType === 'dropoff' ? S.cycle
               : (pickI >= 0 && NAV.current < pickI) ? S.walkIn : S.walkOut;
   const c = route?.geometry?.coordinates; if (!c || c.length < 2) return null;
   let best = 0, bd = Infinity;
@@ -1299,50 +1396,88 @@ function aheadPoint(lat, lon) {
   const [x, y] = c[c.length - 1]; return { lat: y, lon: x };
 }
 
+// Sensor heading → target for the frame loop (4° dead zone stops the map trembling)
 function updateHeading() {
   if (!NAV.active) return;
   NAV.heading = NAV.gpsHeading ?? NAV.compass ?? null;
-  if (NAV.heading == null) { document.getElementById('nav-facing').style.display = 'none'; return; }
-  NAV.userMarker?.setRotation(NAV.heading);
-  syncRider();
+  const raw = NAV.heading ?? NAV.aheadBearing ?? null;          // no compass: face along the route
+  if (raw != null && (NAV.headingTarget == null || Math.abs(angleDiff(raw, NAV.headingTarget)) > 4)) NAV.headingTarget = raw;
 
-  // Facing check
+  const now = Date.now();
+  if (now - (NAV.lastFacing || 0) < 250) return;
+  NAV.lastFacing = now;
   const el = document.getElementById('nav-facing');
-  const a = NAV.userLat !== undefined && aheadPoint(NAV.userLat, NAV.userLon);
-  if (a) {
-    const d = angleDiff(bearingTo(NAV.userLat, NAV.userLon, a.lat, a.lon), NAV.heading);
-    const [txt, cls] = Math.abs(d) < 40 ? ['✓ Right way', 'ok'] : Math.abs(d) > 140 ? ['↶ Turn around', 'bad']
-                     : d > 0 ? ['↱ Turn right', 'warn'] : ['↰ Turn left', 'warn'];
-    el.textContent = txt; el.className = cls; el.style.display = 'block';
-  }
-
-  // Heading-up camera: rotate at most ~5x a second, ignore tiny jitter
-  if (NAV.view === 'follow' && map._ml) {
-    const now = Date.now();
-    // don't interrupt a camera move in progress (that cancels the zoom-in); it already carries the heading
-    if (!map._ml.isEasing() && now - (NAV.lastRotate || 0) > 200 && Math.abs(angleDiff(NAV.heading, map._ml.getBearing())) > 3) {
-      NAV.lastRotate = now;
-      map._ml.rotateTo(NAV.heading, { duration: 200 });
-    }
-  }
+  if (NAV.heading == null || NAV.aheadBearing == null) { el.style.display = 'none'; return; }
+  const d = angleDiff(NAV.aheadBearing, NAV.heading);
+  const [txt, cls] = Math.abs(d) < 40 ? ['✓ Right way', 'ok'] : Math.abs(d) > 140 ? ['↶ Turn around', 'bad']
+                   : d > 0 ? ['↱ Turn right', 'warn'] : ['↰ Turn left', 'warn'];
+  el.textContent = txt; el.className = cls; el.style.display = 'block';
 }
 
-// Follow view: tilted, rotated to your heading, you in the lower part of the screen
-function navCamera(lat, lon) {
-  const ml = map._ml; if (!ml) return;
-  const h = ml.getContainer().clientHeight;
-  const o = { center: [lon, lat], duration: NAV.zoomed ? 800 : 1200 };
-  if (NAV.view === 'follow') Object.assign(o, { pitch: 50, zoom: 17.6, bearing: NAV.heading ?? ml.getBearing(), padding: { top: h * 0.45, bottom: 0, left: 0, right: 0 } });
-  else Object.assign(o, { pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, ...(NAV.zoomed ? {} : { zoom: 16 }) });
-  ml.easeTo(o);
-  ml.once('moveend', () => { NAV.lastRotate = 0; updateHeading(); });   // catch up on any turn skipped mid-move
-  NAV.zoomed = true;
+// First camera move into the nav view (tilt, zoom, you in the lower part of the screen)
+function initCamera() {
+  const ml = map._ml; if (!ml || NAV.dispLat == null) return;
+  NAV.camReady = false;
+  const h = ml.getContainer().clientHeight, follow = NAV.view === 'follow';
+  if (NAV.dispHeading == null && NAV.headingTarget != null) NAV.dispHeading = NAV.headingTarget;
+  ml.easeTo({ center: [NAV.dispLon, NAV.dispLat], zoom: follow ? 17.6 : 16, pitch: follow ? 50 : 0,
+              bearing: follow ? (NAV.dispHeading ?? ml.getBearing()) : 0,
+              padding: { top: follow ? h * 0.45 : 0, bottom: 0, left: 0, right: 0 }, duration: 1000 });
+  ml.once('moveend', () => { NAV.camReady = true; });
 }
 
+// One loop draws the camera, your dot and the rider every frame, gliding towards the
+// latest GPS fix and heading. No overlapping eases, so turns can't get cancelled.
+function camLoop(t) {
+  if (!NAV.active) { NAV.loopId = null; return; }
+  NAV.loopId = requestAnimationFrame(camLoop);
+  const dt = Math.min(0.1, (t - (NAV.lastFrame ?? t)) / 1000); NAV.lastFrame = t;
+  if (NAV.userLat === undefined || NAV.dispLat == null) return;
+
+  const kPos = 1 - Math.exp(-dt / 0.6), kRot = 1 - Math.exp(-dt / 0.45);
+  const dLat = NAV.userLat - NAV.dispLat, dLon = NAV.userLon - NAV.dispLon;
+  const moved = Math.abs(dLat) + Math.abs(dLon) > 2e-7;
+  if (moved) { NAV.dispLat += dLat * kPos; NAV.dispLon += dLon * kPos; }
+
+  let turned = false;
+  if (NAV.headingTarget != null) {
+    if (NAV.dispHeading == null) { NAV.dispHeading = NAV.headingTarget; turned = true; }
+    const d = angleDiff(NAV.headingTarget, NAV.dispHeading);
+    if (Math.abs(d) > 0.3) { NAV.dispHeading = (NAV.dispHeading + d * kRot + 360) % 360; turned = true; }
+  }
+
+  if (moved || turned) {
+    NAV.userMarker?.setLatLng([NAV.dispLat, NAV.dispLon]);
+    if (NAV.dispHeading != null) NAV.userMarker?.setRotation(NAV.dispHeading);
+    NAV.riderMarker?.setLatLng([NAV.dispLat, NAV.dispLon]);
+    syncRider();
+  }
+
+  const ml = map._ml;
+  const bearing = NAV.view === 'follow' ? (NAV.dispHeading ?? ml.getBearing()) : 0;
+  if (NAV.paused) {                                   // you moved the map: leave it alone for a few seconds
+    if (Date.now() < NAV.userPanUntil) return;
+    NAV.paused = false;
+    ml.easeTo({ center: [NAV.dispLon, NAV.dispLat], bearing, duration: 700 });
+    return;
+  }
+  if (!NAV.camReady || ml.isEasing()) return;
+  const c = ml.getCenter();
+  if (Math.abs(c.lat - NAV.dispLat) + Math.abs(c.lng - NAV.dispLon) > 2e-7 || Math.abs(angleDiff(bearing, ml.getBearing())) > 0.2)
+    ml.jumpTo({ center: [NAV.dispLon, NAV.dispLat], bearing });
+}
+function startCamLoop() { if (!NAV.loopId) { NAV.lastFrame = null; NAV.loopId = requestAnimationFrame(camLoop); } }
+function stopCamLoop()  { if (NAV.loopId) cancelAnimationFrame(NAV.loopId); NAV.loopId = null; }
+
+function setViewLabel() {
+  document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🧭 Facing' : '⬆ North';
+}
 function toggleNavView() {
+  requestCompass();                                   // a tap is when iPhone allows the prompt
   NAV.view = NAV.view === 'follow' ? 'north' : 'follow';
-  document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🧭 North up' : '🧭 Follow';
-  if (NAV.userLat !== undefined) navCamera(NAV.userLat, NAV.userLon);
+  setViewLabel();
+  NAV.paused = false;
+  initCamera();
   syncRider();
 }
 
@@ -1360,7 +1495,6 @@ async function requestWakeLock() {
   } catch(e) { console.warn('Wake lock unavailable:', e.message); }
 }
 function releaseWakeLock() { try { NAV.wakeLock?.release(); } catch(e) {} NAV.wakeLock = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && NAV.active) requestWakeLock(); });
 
 // Point S.pickup / S.dropoff at the freshly loaded station objects
 function syncJourneyStations() {
@@ -1387,17 +1521,16 @@ function nextStationStep() {
   return null;
 }
 
-// Starts ~5 min before each station: one check straight away, then a poll
-// every minute ONLY while that station's count is low.
+// Starts ~5 min before each station: one check straight away, then every PROXIMITY_EVERY seconds
 function startProximityRefresh(type) {
   if (NAV.proximityRefreshId) clearInterval(NAV.proximityRefreshId);
   NAV.proximityFor = type;
   NAV.lastAlert = null;
-  doProximityRefresh(true);
-  NAV.proximityRefreshId = setInterval(() => doProximityRefresh(false), PROXIMITY_EVERY * 1000);
+  doProximityRefresh();
+  NAV.proximityRefreshId = setInterval(doProximityRefresh, PROXIMITY_EVERY * 1000);
 }
 
-// Re-fetch just the one station (small request), every PROXIMITY_EVERY seconds
+// Re-fetch just the one station (small request)
 async function refreshOneStation(st) {
   try {
     const res = await fetch(`${TFL}/BikePoint/${st.id}`);
@@ -1419,6 +1552,7 @@ async function doProximityRefresh() {
   if (!fresh) return;
   if (isPickup) S.pickup = fresh; else S.dropoff = fresh;
   const count = countOf(fresh);
+  renderNavStation();
 
   if (count < LOW_AVAIL) {
     // Getting low: pull the full list too, so the alternatives and reroute are current
@@ -1436,30 +1570,48 @@ async function doProximityRefresh() {
   }
 }
 
+// ─── Finding your place on the route again (missed turns, or after reopening) ─
+function distToSeg(lat, lon, a, b) {                  // a, b are [lon, lat]; metres
+  const kx = Math.cos(lat * Math.PI / 180) * 111320, ky = 110540;
+  const ax = (a[0] - lon) * kx, ay = (a[1] - lat) * ky, bx = (b[0] - lon) * kx, by = (b[1] - lat) * ky;
+  const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+  return Math.hypot(ax + t * dx, ay + t * dy);
+}
+// Skip ahead to the stretch of route you're actually on. Never goes backwards.
+function resyncStep(lat, lon, force) {
+  const n = NAV.steps.length; if (NAV.current >= n - 1) return;
+  const seg = i => { const a = NAV.steps[i].maneuver?.location, b = NAV.steps[i + 1].maneuver?.location;
+                     return a && b ? distToSeg(lat, lon, a, b) : Infinity; };
+  const here = seg(NAV.current);
+  if (!force && here < 40) return;
+  let best = NAV.current, bd = here;
+  for (let i = NAV.current + 1; i < n - 1; i++) { const d = seg(i); if (d < bd) { bd = d; best = i; } }
+  if (best > NAV.current && bd < 30) { NAV.current = best; saveNavProgress(); }
+}
+
 function onNavPosition(pos) {
+  if (!NAV.active) return;
   const {latitude:lat, longitude:lon} = pos.coords;
   NAV.userLat = lat; NAV.userLon = lon;
+  if (NAV.dispLat == null || NAV.resync) { NAV.dispLat = lat; NAV.dispLon = lon; }   // jump, don't glide across town
+
   // Blue dot with a beam showing which way you're facing
-  const dotHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs><path d="M24 24 L12 2 A24 24 0 0 1 36 2 Z" fill="url(#beam)"/></svg>`;
-  const dotIcon = L.divIcon({className:'',html:dotHTML,iconSize:[48,48],iconAnchor:[24,24]});
-  if (NAV.userMarker) NAV.userMarker.setLatLng([lat,lon]);
-  else NAV.userMarker = L.marker([lat,lon],{icon:dotIcon,zIndexOffset:1000,rotationAlignment:'map'}).addTo(map);
-  if (NAV.riderMarker) NAV.riderMarker.setLatLng([lat,lon]);
-  else NAV.riderMarker = L.marker([lat,lon],{icon:makeRiderIcon(),zIndexOffset:1001}).addTo(map);
-  // Moving fast (cycling): GPS course is steadier than the compass
-  const {heading, speed} = pos.coords;
-  NAV.gpsHeading = (speed != null && speed > 2 && heading != null && !isNaN(heading)) ? heading : null;
-  updateHeading();
-  navCamera(lat, lon);
-  syncRider();
+  if (!NAV.userMarker) {
+    const dotHTML = `<svg width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1d4ed8" stop-opacity="0.45"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs><path d="M24 24 L12 2 A24 24 0 0 1 36 2 Z" fill="url(#beam)"/></svg>`;
+    NAV.userMarker = L.marker([NAV.dispLat,NAV.dispLon],{icon:L.divIcon({className:'',html:dotHTML,iconSize:[48,48],iconAnchor:[24,24]}),zIndexOffset:1000,rotationAlignment:'map'}).addTo(map);
+  }
+  if (!NAV.riderMarker) NAV.riderMarker = L.marker([NAV.dispLat,NAV.dispLon],{icon:makeRiderIcon(),zIndexOffset:1001}).addTo(map);
 
-
-  // Auto-advance steps
+  // Where you are on the route
+  resyncStep(lat, lon, !!NAV.resync);
+  NAV.resync = false;
   while (NAV.current < NAV.steps.length-1) {
     const next = NAV.steps[NAV.current+1];
     const [nLon,nLat] = next.maneuver.location;
     if (haversine(lat,lon,nLat,nLon) < STEP_ADV_M) {
       NAV.current++;
+      saveNavProgress();
       if (NAV.current >= NAV.steps.length-1) {
         updateNavCard();
         NAV.arrived = true;
@@ -1469,6 +1621,14 @@ function onNavPosition(pos) {
     } else break;
   }
 
+  const a = aheadPoint(lat, lon);
+  NAV.aheadBearing = a ? bearingTo(lat, lon, a.lat, a.lon) : null;
+  // Moving fast (cycling): GPS course is steadier than the compass
+  const {heading, speed} = pos.coords;
+  NAV.gpsHeading = (speed != null && speed > 2 && heading != null && !isNaN(heading) && heading >= 0) ? heading : null;
+  updateHeading();
+  if (!NAV.camStarted) { NAV.camStarted = true; initCamera(); }
+
   // Watch the next station once we're ~5 min from it
   const nxt = nextStationStep();
   if (!nxt) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
@@ -1477,50 +1637,139 @@ function onNavPosition(pos) {
   updateNavCard();
 }
 
-function startNavigation() {
-  if (!S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
-  track('nav-start', 'Navigation started');
-  NAV.steps = buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
-  NAV.current = 0; NAV.active = true; NAV.proximityFor = null; NAV.lastAlert = null; NAV.zoomed = false;
-  NAV.userLat = NAV.userLon = undefined; NAV.view = 'follow'; NAV.gpsHeading = null;
-  document.getElementById('nav-view').textContent = '🧭 North up';
-  requestCompass();
+function startWatch() {
+  if (!navigator.geolocation) return;
+  if (NAV.watchId !== null && NAV.watchId !== undefined) navigator.geolocation.clearWatch(NAV.watchId);
+  NAV.watchId = navigator.geolocation.watchPosition(onNavPosition,
+    err => { if (err.code === 1) toast('Location is off. Allow it for this app in Settings to navigate.', 6000); },  // ignore timeouts: they just mean no new fix yet
+    {enableHighAccuracy:true, maximumAge:1500, timeout:30000});
+}
+
+// resumed = true when picking a saved trip back up (steps already in NAV)
+function startNavigation(resumed) {
+  requestCompass();                                    // first, while we're still inside the tap
+  resumed = resumed === true;
+  if (!resumed) {
+    if (!S.walkOnly && !S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
+    NAV.steps = S.walkOnly ? buildWalkSteps(S.walkOnly) : buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
+    NAV.current = 0;
+  }
+  track(resumed ? 'nav-resumed' : S.walkOnly ? 'nav-start-walk' : 'nav-start', resumed ? 'Navigation resumed' : 'Navigation started');
+  Object.assign(NAV, { active: true, proximityFor: null, lastAlert: null, userLat: undefined, userLon: undefined,
+    view: 'follow', gpsHeading: null, heading: null, headingTarget: null, aheadBearing: null,
+    dispLat: null, dispLon: null, dispHeading: null, camReady: false, camStarted: false, paused: false,
+    resync: resumed, pinKey: null });
+  setViewLabel();
   startRider3d();
   requestWakeLock();
   renderStations();
-  logJourneyStart();
+  if (!resumed) logJourneyStart();
+  // You are the rider now; the start pin would be a second one
+  if (markerStart && S.startIsGPS) { map.removeLayer(markerStart); NAV.startHidden = true; }
   document.getElementById('search-panel').classList.add('nav-active');
   document.getElementById('journey-panel').classList.add('nav-active');
   document.getElementById('nav-overlay').classList.add('active');
   document.getElementById('map-legend').style.display = 'none';
+  document.getElementById('resume-banner').classList.remove('visible');
   updateNavCard();
   renderNavAlternatives(); // show amber-ringed alt stations
-  if (navigator.geolocation) {
-    NAV.watchId = navigator.geolocation.watchPosition(onNavPosition,
-      err => toast(`GPS: ${err.message}`,4000),
-      {enableHighAccuracy:true, maximumAge:1500, timeout:10000});
-  }
+  saveNavState();
+  startWatch();
+  startCamLoop();
+  setTimeout(() => { if (NAV.active && NAV.compass == null && NAV.gpsHeading == null)
+    toast('No compass reading yet. Tap 🧭 Facing to allow it', 5000); }, 5000);
 }
 
 function stopNavigation() {
   NAV.active = false;
-  if (NAV.watchId !== null)        { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
+  if (NAV.watchId !== null && NAV.watchId !== undefined) { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
   if (NAV.proximityRefreshId)      { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; }
   if (NAV.userMarker)              { map.removeLayer(NAV.userMarker); NAV.userMarker=null; }
   if (NAV.riderMarker)             { map.removeLayer(NAV.riderMarker); NAV.riderMarker=null; }
+  if (NAV.startHidden && markerStart) map.addLayer(markerStart);
+  NAV.startHidden = false;
+  stopCamLoop();
   document.getElementById('search-panel').classList.remove('nav-active');
   document.getElementById('journey-panel').classList.remove('nav-active');
   document.getElementById('nav-overlay').classList.remove('active');
+  document.getElementById('nav-station').style.display = 'none';
   document.getElementById('map-legend').style.display = '';
   hideAvailAlert();
   clearNavAlternatives();
   if (NAV.historyId) track(NAV.arrived === true ? 'nav-completed' : 'nav-ended-early', NAV.arrived === true ? 'Navigation completed' : 'Navigation ended early');
   logJourneyEnd(NAV.arrived === true);
+  clearNavState();
   releaseWakeLock();
   stopCompass(); resetCamera(); stopRider3d();
   document.getElementById('nav-facing').style.display = 'none';
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
+}
+
+// Coming back to the app mid-trip: restart GPS, find your place, refresh the station
+document.addEventListener('visibilitychange', () => {
+  if (!NAV.active) return;
+  if (document.visibilityState === 'hidden') { saveNavProgress(); return; }
+  requestWakeLock();
+  NAV.resync = true;
+  startWatch();
+  navigator.geolocation?.getCurrentPosition(onNavPosition, () => {}, {enableHighAccuracy:true, maximumAge:0, timeout:10000});
+  loadStations(false);
+  toast('📍 Finding you again…', 2500);
+});
+
+// ─── Saved trip (so a closed app can pick up where it left off) ───────────────
+const NAV_KEY = 'rothar-nav-v1', NAV_PROG_KEY = 'rothar-nav-progress-v1';
+function saveNavState() {
+  try {
+    localStorage.setItem(NAV_KEY, JSON.stringify({ t: Date.now(), start: S.start, end: S.end, startIsGPS: S.startIsGPS,
+      bikeFilter: S.bikeFilter, routeType: S.routeType, pickup: S.pickup, dropoff: S.dropoff,
+      walkIn: S.walkIn, cycle: S.cycle, walkOut: S.walkOut, walkOnly: S.walkOnly,
+      steps: NAV.steps, current: NAV.current, historyId: NAV.historyId }));
+    saveNavProgress();
+  } catch (e) { console.warn('Could not save trip:', e.message); }
+}
+function saveNavProgress() { try { localStorage.setItem(NAV_PROG_KEY, JSON.stringify({ current: NAV.current, t: Date.now() })); } catch (e) {} }
+function clearNavState() { try { localStorage.removeItem(NAV_KEY); localStorage.removeItem(NAV_PROG_KEY); } catch (e) {} }
+
+function checkResume() {
+  let s = null, p = null;
+  try { s = JSON.parse(localStorage.getItem(NAV_KEY) || 'null'); p = JSON.parse(localStorage.getItem(NAV_PROG_KEY) || 'null'); } catch (e) {}
+  if (!s || !s.steps?.length || !s.end) return false;
+  if (Date.now() - Math.max(s.t || 0, p?.t || 0) > RESUME_MAX_AGE) { clearNavState(); return false; }
+  const current = Math.min(p?.current ?? s.current ?? 0, s.steps.length - 1);
+  document.getElementById('resume-text').innerHTML = `<b>Trip to ${esc(s.end.label)}</b><br><span style="color:#666;font-size:12px">${s.walkOnly ? 'Walking' : 'Bike'} · still in progress</span>`;
+  document.getElementById('resume-banner').classList.add('visible');
+  document.getElementById('resume-go').onclick = () => resumeTrip(s, current);
+  document.getElementById('resume-x').onclick = () => {
+    document.getElementById('resume-banner').classList.remove('visible');
+    if (s.historyId) { NAV.historyId = s.historyId; logJourneyEnd(false); }
+    clearNavState();
+    requestLocation();
+  };
+  return true;
+}
+
+function resumeTrip(s, current) {
+  Object.assign(S, { start: s.start, end: s.end, startIsGPS: !!s.startIsGPS, bikeFilter: s.bikeFilter || 'any',
+    routeType: s.routeType || 'balanced', pickup: s.pickup, dropoff: s.dropoff, walkIn: s.walkIn, cycle: s.cycle,
+    walkOut: s.walkOut, walkOnly: s.walkOnly, journeyActive: true });
+  document.querySelectorAll('#filter-row .pill-btn').forEach(b => b.classList.toggle('active-red', b.dataset.filter === S.bikeFilter));
+  document.querySelectorAll('#route-row .pill-btn').forEach(b => b.classList.toggle('active-blue', b.dataset.rt === S.routeType));
+  if (S.start) {
+    document.getElementById('from-input').value = S.start.label || '';
+    document.getElementById('from-clear').classList.add('visible');
+    if (markerStart) map.removeLayer(markerStart);
+    markerStart = L.marker([S.start.lat,S.start.lon], { icon: S.startIsGPS ? makeGPSIcon() : makeTypedStartIcon(), zIndexOffset: 200 }).addTo(map);
+  }
+  document.getElementById('to-input').value = S.end.label || '';
+  document.getElementById('to-clear').classList.add('visible');
+  if (markerEnd) map.removeLayer(markerEnd);
+  markerEnd = L.marker([S.end.lat,S.end.lon], {icon: makeEndIcon()}).addTo(map);
+  NAV.steps = s.steps; NAV.current = current; NAV.historyId = s.historyId;
+  redrawJourney();
+  startNavigation(true);
+  loadStations(false);
 }
 
 // ─── Anonymous usage counts (GoatCounter) ─────────────────────────────────────
@@ -1540,16 +1789,15 @@ window.addEventListener('unhandledrejection', e => trackError(e.reason?.message 
 const HISTORY_KEY = 'sc-history-v1';
 function loadHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; } }
 function saveHistory(h) { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 100))); } catch(e) {} }
-function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function logJourneyStart() {
   const h = loadHistory();
   NAV.historyId = Date.now();
   h.unshift({
-    id: NAV.historyId, startedAt: NAV.historyId,
+    id: NAV.historyId, startedAt: NAV.historyId, mode: S.walkOnly ? 'walk' : 'bike',
     from: S.start?.label, to: S.end?.label,
     pickup: S.pickup?.commonName, dropoff: S.dropoff?.commonName,
-    plannedSecs: (S.walkIn?.duration||0) + (S.cycle?.duration||0) + (S.walkOut?.duration||0) + DOCK_OVERHEAD,
+    plannedSecs: S.walkOnly ? S.walkOnly.duration : (S.walkIn?.duration||0) + (S.cycle?.duration||0) + (S.walkOut?.duration||0) + DOCK_OVERHEAD,
     cycleMetres: S.cycle?.distance || 0,
     status: 'started'
   });
@@ -1584,11 +1832,13 @@ function renderHistory() {
     const when = d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'}) + ' · ' +
                  d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
     const took = x.endedAt ? fmtTime((x.endedAt - x.startedAt)/1000) : '–';
+    const how = x.mode === 'walk' ? '🚶 Walked' : `🚲 ${esc(x.pickup)} → 🅿 ${esc(x.dropoff)}`;
+    const dist = x.mode === 'walk' ? '' : ` · ${fmtDist(x.cycleMetres||0)} cycled`;
     return `<div class="hist-item">
       <div class="hist-route">${esc(x.from)} → ${esc(x.to)}</div>
       <div class="hist-meta">${when} · ${esc(x.status)}<br>
-      🚲 ${esc(x.pickup)} → 🅿 ${esc(x.dropoff)}<br>
-      Took ${took} (planned ${fmtTime(x.plannedSecs)}) · ${fmtDist(x.cycleMetres||0)} cycled</div>
+      ${how}<br>
+      Took ${took} (planned ${fmtTime(x.plannedSecs)})${dist}</div>
     </div>`;
   }).join('');
 }
@@ -1603,7 +1853,7 @@ function requestLocation() {
       toast('Trying GPS…',0);
       navigator.geolocation.getCurrentPosition(
         ({coords}) => { setStart(coords.latitude,coords.longitude,'Your location',true); toast('📍 Location found',2000); },
-        err => toast('Location unavailable — allow access in browser settings.',6000),
+        err => toast('Location unavailable. Allow access in your browser settings.',6000),
         {enableHighAccuracy:true, timeout:20000, maximumAge:0}
       );
     },
@@ -1612,11 +1862,12 @@ function requestLocation() {
 }
 
 function setStart(lat, lon, label, isGPS=false) {
-  S.start = {lat,lon,label}; S.startIsGPS = isGPS; S.forceShowBike = false;
+  if (NAV.active) return;                         // don't move the start under a running trip
+  S.start = {lat,lon,label}; S.startIsGPS = isGPS;
   document.getElementById('from-input').value = label;
   document.getElementById('from-clear').classList.add('visible');
   if (markerStart) map.removeLayer(markerStart);
-  // GPS gets pulsing blue dot; typed address gets red pin — visually distinct
+  // GPS gets the rider; typed address gets red pin — visually distinct
   markerStart = L.marker([lat,lon], {
     icon: isGPS ? makeGPSIcon() : makeTypedStartIcon(),
     zIndexOffset: 200
@@ -1626,19 +1877,17 @@ function setStart(lat, lon, label, isGPS=false) {
 }
 
 function setEnd(lat, lon, label) {
-  S.end = {lat,lon,label}; S.forceShowBike = false;
+  S.end = {lat,lon,label};
   document.getElementById('to-input').value = label;
   document.getElementById('to-clear').classList.add('visible');
   if (markerEnd) map.removeLayer(markerEnd);
-  markerEnd = L.marker([lat,lon], {
-    icon: L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#7c3aed;border:3px solid white;box-shadow:0 2px 6px rgba(124,58,237,0.4)"></div>`,iconSize:[14,14],iconAnchor:[7,7]})
-  }).addTo(map);
+  markerEnd = L.marker([lat,lon], { icon: makeEndIcon() }).addTo(map);
   loadStations();
 }
 
 // ─── Autocomplete — Photon (matches partial words), Nominatim fallback ──────
 const PHOTON = 'https://photon.komoot.io/api/';
-const MIN_QUERY = 3; // letters (not counting the house number) before suggestions start
+const MIN_QUERY = 2; // letters (not counting the house number) before suggestions start
 const letterCount = q => splitHouseNumber(q).rest.replace(/[^a-z]/gi, '').length;
 
 // "5 Scawfell", "12a high st" → { num: '5', rest: 'Scawfell' }
@@ -1653,18 +1902,19 @@ function biasPoint() {
   return { lat: c.lat, lon: c.lng };
 }
 
-async function getSuggestions(q) {
+async function getSuggestions(q, signal) {
   try {
-    return await photonSuggestions(q);
+    return await photonSuggestions(q, signal);
   } catch(e) {
+    if (e.name === 'AbortError') throw e;              // superseded by newer typing, not a failure
     console.warn('Photon failed, falling back to Nominatim:', e.message);
     return nominatimSuggestions(q, splitHouseNumber(q).num);
   }
 }
 
-async function photonRaw(q) {
+async function photonRaw(q, signal) {
   const b = biasPoint();
-  const res = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=10&lang=en&bbox=-0.52,51.26,0.35,51.72&lat=${b.lat}&lon=${b.lon}`);
+  const res = await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=10&lang=en&bbox=-0.52,51.26,0.35,51.72&lat=${b.lat}&lon=${b.lon}`, { signal });
   if (!res.ok) throw new Error(`Photon ${res.status}`);
   return (await res.json()).features || [];
 }
@@ -1689,13 +1939,13 @@ function photonItem(f, num) {
            sub: [p.name && p.street && p.street !== p.name ? p.street : '', area].filter(Boolean).join(' · '), lat, lon };
 }
 
-async function photonSuggestions(q) {
+async function photonSuggestions(q, signal) {
   const { num, rest } = splitHouseNumber(q);
   let items;
   if (num) {
     // The number confuses prefix matching, so search the street on its own,
     // and the full text in parallel to catch addresses that do have numbers mapped.
-    const [full, street] = await Promise.all([photonRaw(q), photonRaw(rest)]);
+    const [full, street] = await Promise.all([photonRaw(q, signal), photonRaw(rest, signal)]);
     const firstWord = rest.trim().split(/\s+/)[0].toLowerCase();
     const exact = full.filter(f => String(f.properties.housenumber || '').toLowerCase() === num.toLowerCase()
                               && String(f.properties.street || f.properties.name || '').toLowerCase().includes(firstWord))
@@ -1704,7 +1954,7 @@ async function photonSuggestions(q) {
              ...street.filter(isStreetFeature).map(f => photonItem(f, num)),
              ...street.filter(f => !isStreetFeature(f)).map(f => photonItem(f, null))];
   } else {
-    items = (await photonRaw(q)).map(f => photonItem(f, null));
+    items = (await photonRaw(q, signal)).map(f => photonItem(f, null));
   }
   const seen = new Set();
   return items.filter(x => {
@@ -1733,12 +1983,14 @@ async function nominatimSuggestions(q, num) {
 function bindAutocomplete(inputId, listId, onSelect) {
   const input = document.getElementById(inputId);
   const list  = document.getElementById(listId);
-  let timer, cache = {};
+  let timer, cache = {}, inflight = null;
+  // Nearest earlier answer for a prefix of q, shown instantly while the new one loads
+  const fromPrefix = q => { for (let i = q.length - 1; i >= MIN_QUERY; i--) { const c = cache[q.slice(0, i)]; if (c) return c; } return null; };
   const hide = () => list.style.display = 'none';
   const show = items => {
     if (!items.length) { hide(); return; }
     list.innerHTML = items.map((it,i) =>
-      `<div class="ac-item" data-i="${i}"><div><div class="ac-main">${it.main}</div><div class="ac-sub">${it.sub}</div></div></div>`
+      `<div class="ac-item" data-i="${i}"><div><div class="ac-main">${esc(it.main)}</div><div class="ac-sub">${esc(it.sub)}</div></div></div>`
     ).join('');
     list.style.display = 'block';
     list.querySelectorAll('.ac-item').forEach(el => el.addEventListener('mousedown', e => {
@@ -1751,12 +2003,17 @@ function bindAutocomplete(inputId, listId, onSelect) {
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (letterCount(q) < MIN_QUERY) { hide(); return; }
-    if (cache[q]) { show(cache[q]); return; }
+    if (letterCount(q) < MIN_QUERY) { inflight?.abort(); hide(); return; }
+    if (cache[q]) { inflight?.abort(); show(cache[q]); return; }
+    const near = fromPrefix(q); if (near) show(near);   // keep the list up instead of blinking
     timer = setTimeout(async () => {
-      try { const its = await getSuggestions(q); cache[q] = its; if (document.activeElement===input) show(its); }
-      catch(e) { hide(); }
-    }, 300);
+      inflight?.abort();
+      const ctl = inflight = new AbortController();
+      try {
+        const its = await getSuggestions(q, ctl.signal); cache[q] = its;
+        if (inflight === ctl && document.activeElement === input && input.value.trim() === q) show(its);
+      } catch(e) { if (e.name !== 'AbortError' && inflight === ctl) hide(); }
+    }, 120);
   });
   input.addEventListener('blur',  () => setTimeout(hide, 200));
   input.addEventListener('focus', () => { const q=input.value.trim(); if(letterCount(q)>=MIN_QUERY&&cache[q]) show(cache[q]); });
@@ -1773,33 +2030,26 @@ document.getElementById('to-input').addEventListener('input', function() {
 document.getElementById('from-clear').addEventListener('click', () => {
   document.getElementById('from-input').value = '';
   document.getElementById('from-clear').classList.remove('visible');
-  S.start = null; S.startIsGPS = false; S.forceShowBike = false;
+  S.start = null; S.startIsGPS = false;
   if (markerStart) { map.removeLayer(markerStart); markerStart=null; }
-  hideWalkBanner(); renderStations();
+  clearPlan(); renderStations();
 });
 document.getElementById('to-clear').addEventListener('click', () => {
   document.getElementById('to-input').value = '';
   document.getElementById('to-clear').classList.remove('visible');
-  S.end = null; S.forceShowBike = false;
+  S.end = null;
   if (markerEnd) { map.removeLayer(markerEnd); markerEnd=null; }
-  routeLayer.clearLayers();
-  document.getElementById('journey-panel').classList.remove('visible');
-  document.getElementById('start-nav-btn').classList.remove('visible');
-  hideWalkBanner(); renderStations();
-  S.journeyActive = false;
+  clearPlan(); renderStations();
 });
 
 // ─── Wire up all controls ─────────────────────────────────────────────────────
 document.getElementById('loc-btn').addEventListener('click', requestLocation);
 document.getElementById('refresh-btn').addEventListener('click', () => loadStations(true));
-document.getElementById('start-nav-btn').addEventListener('click', startNavigation);
+document.getElementById('start-nav-btn').addEventListener('click', () => startNavigation(false));
 document.getElementById('nav-stop').addEventListener('click', stopNavigation);
 document.getElementById('nav-view').addEventListener('click', toggleNavView);
 document.getElementById('history-btn').addEventListener('click', () => { track('activity-opened', 'Activity opened'); renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
 document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
-document.getElementById('walk-anyway-btn').addEventListener('click', () => {
-  S.forceShowBike = true; hideWalkBanner(); planJourney();
-});
 
 // Bike type filter
 document.querySelectorAll('#filter-row .pill-btn').forEach(btn => btn.addEventListener('click', () => {
@@ -1830,11 +2080,13 @@ bindAutocomplete('to-input',  'to-ac',  setEnd);
 // Re-render exploration-mode stations when the map moves
 let moveTimer;
 map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(moveTimer); moveTimer = setTimeout(renderStations, 150); } });
+// During navigation, a drag/pinch by you pauses the follow camera for a few seconds
+map.on('move', e => { if (NAV.active && e.originalEvent) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-setInterval(updateBadge, 15000);
+setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); }, 15000);   // keeps the arrival time honest when you stop
 loadStations();
-setTimeout(requestLocation, 600);
+if (!checkResume()) setTimeout(requestLocation, 600);
 </script>
 <!-- Anonymous usage counts: no cookies, no personal data. Dashboard visible only to the site owner. -->
 <script data-goatcounter="https://rothar.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
