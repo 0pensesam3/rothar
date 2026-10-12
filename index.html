@@ -201,7 +201,7 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
 /* ── Nav overlay ── */
 #nav-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1500; display: none; flex-direction: column; pointer-events: none; padding: 8px 8px 0; }
 #nav-overlay.active { display: flex; }
-#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; border-radius: 20px 20px 0 0; }
+#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; border-radius: 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.18); }
 #nav-card.walk    { background: #1e1b4b; }
 #nav-card.cycle   { background: #7f1d1d; }
 #nav-card.pickup  { background: #14532d; }
@@ -210,25 +210,34 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
 #nav-maneuver { font-size: 36px; flex-shrink: 0; width: 44px; text-align: center; line-height: 1; }
 #nav-text { flex: 1; min-width: 0; }
 #nav-primary { font-size: 17px; font-weight: 700; line-height: 1.2; }
-#nav-road    { font-size: 12px; opacity: 0.75; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#nav-road    { font-size: 12px; opacity: 0.75; margin-top: 3px; line-height: 1.3; }
 #nav-dist    { font-size: 26px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
 #nav-bar { height: 3px; background: rgba(255,255,255,0.2); margin-top: 10px; border-radius: 2px; }
 #nav-bar-fill { height: 100%; background: white; border-radius: 2px; transition: width 0.5s; }
-#nav-meta { background: white; padding: 8px 10px 8px 14px; display: flex; align-items: center; gap: 6px; pointer-events: auto; border-radius: 0 0 20px 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.16); }
-#nav-eta { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-#nav-eta-time { font-size: 22px; font-weight: 700; color: #15803d; white-space: nowrap; }
-#nav-eta-sub  { font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#nav-view, #nav-stop { background: #f1f1ee; color: #111; border: none; border-radius: 16px; padding: 7px 11px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap; }
-#nav-station { margin-top: 8px; align-self: flex-start; max-width: 100%; display: none; align-items: center; gap: 8px; background: white; border-radius: 22px; padding: 5px 12px 5px 5px; box-shadow: 0 4px 14px rgba(0,0,0,0.16); font-size: 13px; color: #111; pointer-events: auto; }
+/* Bottom bar while navigating: time left, arrival, distance, and End within thumb reach */
+#nav-bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1560; display: none; align-items: center; gap: 12px; background: white; border-radius: 22px 22px 0 0; box-shadow: 0 -4px 18px rgba(0,0,0,0.14); padding: 12px 14px calc(12px + env(safe-area-inset-bottom)) 18px; }
+body.navigating #nav-bottom { display: flex; }
+#nav-eta { flex: 1; min-width: 0; }
+#nav-eta-time   { font-size: 28px; font-weight: 700; color: #15803d; line-height: 1.1; }
+#nav-eta-arrive { font-size: 17px; font-weight: 600; color: #111; margin-top: 2px; }
+#nav-eta-dist   { font-size: 12px; color: #6b7280; margin-top: 2px; }
+#nav-stop { flex-shrink: 0; min-width: 96px; height: 52px; border: none; border-radius: 26px; background: #e31837; color: white; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; padding: 0 18px; }
+#nav-stop.confirm { background: #7f1d1d; font-size: 14px; }
+/* View switch: floating above the bottom bar, on the map */
+#nav-view { position: absolute; right: 12px; bottom: calc(108px + env(safe-area-inset-bottom)); z-index: 1555; display: none; background: white; color: #111; border: none; border-radius: 20px; padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+body.navigating #nav-view { display: block; }
+body.navigating .maplibregl-ctrl-bottom-right { bottom: 100px; }
+body.navigating .maplibregl-ctrl-top-left { display: none; }
+#nav-station { margin-top: 8px; align-self: flex-start; max-width: 100%; display: none; align-items: center; gap: 8px; background: white; border-radius: 18px; padding: 6px 12px 6px 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.16); font-size: 13px; color: #111; pointer-events: auto; }
 .ns-count { border-radius: 16px; padding: 4px 10px; font-weight: 700; color: white; white-space: nowrap; font-size: 14px; }
 .ns-count.ok { background: #16a34a; } .ns-count.warn { background: #d97706; } .ns-count.bad { background: #dc2626; }
-.ns-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ns-txt { min-width: 0; line-height: 1.3; }
 .ns-age { font-size: 11px; color: #888; white-space: nowrap; }
-#nav-facing { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
+#nav-facing { position: absolute; bottom: calc(160px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
 #nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
 
 /* ── Availability popup ── */
-#avail-popup { position: absolute; bottom: 16px; left: 12px; right: 12px; background: white; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
+#avail-popup { position: absolute; bottom: calc(112px + env(safe-area-inset-bottom)); left: 12px; right: 12px; background: white; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
 #avail-popup.visible { display: block; }
 #avail-popup-head { padding: 12px 14px 8px; background: #fffbeb; border-bottom: 1px solid #fde68a; display: flex; align-items: center; gap: 8px; }
 #avail-popup-title { font-size: 14px; font-weight: 600; color: #78350f; flex: 1; }
@@ -266,11 +275,12 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
 #start-nav-btn { display: none; width: calc(100% - 28px); margin: 8px 14px 6px; padding: 12px; background: #e31837; color: white; border: none; border-radius: 24px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
 #start-nav-btn.visible { display: block; }
 #start-nav-btn.walk { background: #16a34a; }
-#journey-summary { padding: 6px 14px 10px; background: white; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #f0f0ee; position: sticky; top: 0; }
-.sum-chip { font-size: 12px; background: #f5f4f0; border-radius: 14px; padding: 4px 10px; color: #374151; white-space: nowrap; }
-.sum-chip strong { color: #e31837; }
-.sum-chip.walk-chip { background: #dcfce7; }
-.sum-chip.walk-chip strong { color: #166534; }
+#journey-summary { padding: 6px 14px 10px; background: white; border-bottom: 1px solid #f0f0ee; position: sticky; top: 0; }
+.sum-tag    { display: inline-block; font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 12px; padding: 3px 10px; margin-bottom: 4px; }
+.sum-main   { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sum-total  { font-size: 24px; font-weight: 700; color: #111; }
+.sum-arrive { font-size: 16px; font-weight: 600; color: #374151; }
+.sum-legs   { font-size: 12px; color: #6b7280; margin-top: 3px; line-height: 1.4; }
 #steps-list { padding: 4px 0 10px; }
 .step-header { padding: 8px 14px 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #e31837; display: flex; align-items: center; gap: 6px; }
 .step-header.walk { color: #16a34a; }
@@ -360,12 +370,17 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
       </div>
       <div id="nav-bar"><div id="nav-bar-fill" style="width:0%"></div></div>
     </div>
-    <div id="nav-meta">
-      <div id="nav-eta"><span id="nav-eta-time">–</span><span id="nav-eta-sub"></span></div>
-      <button id="nav-view">🧭 Facing</button>
-      <button id="nav-stop">✕ End</button>
-    </div>
     <div id="nav-station"></div>
+  </div>
+
+  <button id="nav-view"></button>
+  <div id="nav-bottom">
+    <div id="nav-eta">
+      <div id="nav-eta-time">–</div>
+      <div id="nav-eta-arrive"></div>
+      <div id="nav-eta-dist"></div>
+    </div>
+    <button id="nav-stop">End trip</button>
   </div>
 
   <div id="nav-facing"></div>
@@ -384,7 +399,7 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 23:50</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 23:59</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
@@ -900,9 +915,9 @@ function showWalkPlan(walk) {
   drawLine(walk.geometry.coordinates, '#16a34a', true);
   map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
   document.getElementById('journey-summary').innerHTML = `
-    <div class="sum-chip walk-chip"><strong>🚶 Faster to walk</strong></div>
-    <div class="sum-chip">${fmtTime(walk.duration)} · ${fmtDist(walk.distance)}</div>
-    <div class="sum-chip">Arrive ${clock(Date.now() + walk.duration*1000)}</div>`;
+    <div class="sum-tag">🚶 Faster to walk</div>
+    <div class="sum-main"><span class="sum-total">${fmtTime(walk.duration)}</span><span class="sum-arrive">Arrive ${clock(Date.now() + walk.duration*1000)}</span></div>
+    <div class="sum-legs">${fmtDist(walk.distance)} on foot</div>`;
   let steps = `<div class="step-header walk">Here's the walking route <span class="step-header-line"></span> ${fmtDist(walk.distance)}</div>`;
   steps += buildStepRows(walk);
   steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${esc(S.end.label)}</span></div>`;
@@ -920,8 +935,9 @@ async function showWalkOption(estSecs) {
   if (walk) { showWalkPlan(walk); return; }
   const dist = haversine(S.start.lat, S.start.lon, S.end.lat, S.end.lon) * DETOUR;
   document.getElementById('journey-summary').innerHTML = `
-    <div class="sum-chip walk-chip"><strong>🚶 Faster to walk</strong></div>
-    <div class="sum-chip">about ${fmtTime(estSecs)} · ${fmtDist(dist)}</div>`;
+    <div class="sum-tag">🚶 Faster to walk</div>
+    <div class="sum-main"><span class="sum-total">about ${fmtTime(estSecs)}</span></div>
+    <div class="sum-legs">${fmtDist(dist)} on foot</div>`;
   document.getElementById('steps-list').innerHTML = `<div class="step-row"><span class="step-txt">Walking directions are unavailable right now. Try again in a moment.</span></div>`;
   document.getElementById('start-nav-btn').classList.remove('visible');
   document.getElementById('journey-panel').classList.add('visible');
@@ -1031,12 +1047,10 @@ function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   const total = (walkIn?.duration||0)+(cycle?.duration||0)+(walkOut?.duration||0)+DOCK_OVERHEAD;
   const cDist = cycle ? fmtDist(cycle.distance) : fmtDist(haversine(pickup.lat,pickup.lon,dropoff.lat,dropoff.lon));
   const empty = prop(dropoff,'NbEmptyDocks');
+  const legWalk = (r, d) => r ? `${fmtTime(r.duration)} walk` : `${fmtDist(d)} walk`;
   document.getElementById('journey-summary').innerHTML = `
-    <div class="sum-chip"><strong>~${fmtTime(total)} total</strong></div>
-    <div class="sum-chip">Arrive ${clock(Date.now() + total*1000)}</div>
-    <div class="sum-chip">🚶 ${walkIn?fmtTime(walkIn.duration):fmtDist(wiDist)}</div>
-    <div class="sum-chip">🚲 ${cycle?fmtTime(cycle.duration):'?'} · ${cDist}</div>
-    <div class="sum-chip">🚶 ${walkOut?fmtTime(walkOut.duration):fmtDist(woDist)}</div>`;
+    <div class="sum-main"><span class="sum-total">${fmtTime(total)}</span><span class="sum-arrive">Arrive ${clock(Date.now() + total*1000)}</span></div>
+    <div class="sum-legs">🚶 ${legWalk(walkIn, wiDist)} · 🚲 ${cycle ? fmtTime(cycle.duration) + ' cycle' : 'cycle'} (${cDist}) · 🚶 ${legWalk(walkOut, woDist)}</div>`;
   let steps = '';
   steps += `<div class="step-header">🟣 Walk to pick-up <span class="step-header-line"></span> ${fmtDist(wiDist)}</div>`;
   steps += `<div class="step-row"><span class="step-ic">📍</span><span class="step-txt">${pickup.commonName}</span></div>`;
@@ -1309,8 +1323,9 @@ function updateNavCard() {
   document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/Math.max(1,total-1))*100)}%`;
 
   const rem = remainingSecs();
-  document.getElementById('nav-eta-time').textContent = rem >= 30 ? fmtTime(rem) : 'Now';
-  document.getElementById('nav-eta-sub').textContent  = `${fmtDist(remainingMetres())} · arrive ${clock(Date.now() + rem*1000)}`;
+  document.getElementById('nav-eta-time').textContent   = rem >= 30 ? `${fmtTime(rem)} left` : 'Almost there';
+  document.getElementById('nav-eta-arrive').textContent = `Arrive ${clock(Date.now() + rem*1000)}`;
+  document.getElementById('nav-eta-dist').textContent   = `${fmtDist(remainingMetres())} to go`;
 
   renderNavStation();
 }
@@ -1470,7 +1485,8 @@ function startCamLoop() { if (!NAV.loopId) { NAV.lastFrame = null; NAV.loopId = 
 function stopCamLoop()  { if (NAV.loopId) cancelAnimationFrame(NAV.loopId); NAV.loopId = null; }
 
 function setViewLabel() {
-  document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🧭 Facing' : '⬆ North';
+  // The button says what tapping it will do
+  document.getElementById('nav-view').textContent = NAV.view === 'follow' ? '🗺 Switch to bird\'s-eye view' : '🧭 Switch to street-level view';
 }
 function toggleNavView() {
   requestCompass();                                   // a tap is when iPhone allows the prompt
@@ -1669,6 +1685,7 @@ function startNavigation(resumed) {
   document.getElementById('search-panel').classList.add('nav-active');
   document.getElementById('journey-panel').classList.add('nav-active');
   document.getElementById('nav-overlay').classList.add('active');
+  document.body.classList.add('navigating'); resetEndButton();
   document.getElementById('map-legend').style.display = 'none';
   document.getElementById('resume-banner').classList.remove('visible');
   updateNavCard();
@@ -1677,7 +1694,7 @@ function startNavigation(resumed) {
   startWatch();
   startCamLoop();
   setTimeout(() => { if (NAV.active && NAV.compass == null && NAV.gpsHeading == null)
-    toast('No compass reading yet. Tap 🧭 Facing to allow it', 5000); }, 5000);
+    toast('No compass reading yet. Tap the view button to allow it', 5000); }, 5000);
 }
 
 function stopNavigation() {
@@ -1692,6 +1709,7 @@ function stopNavigation() {
   document.getElementById('search-panel').classList.remove('nav-active');
   document.getElementById('journey-panel').classList.remove('nav-active');
   document.getElementById('nav-overlay').classList.remove('active');
+  document.body.classList.remove('navigating');
   document.getElementById('nav-station').style.display = 'none';
   document.getElementById('map-legend').style.display = '';
   hideAvailAlert();
@@ -2046,7 +2064,19 @@ document.getElementById('to-clear').addEventListener('click', () => {
 document.getElementById('loc-btn').addEventListener('click', requestLocation);
 document.getElementById('refresh-btn').addEventListener('click', () => loadStations(true));
 document.getElementById('start-nav-btn').addEventListener('click', () => startNavigation(false));
-document.getElementById('nav-stop').addEventListener('click', stopNavigation);
+// Big End button is easy to hit by accident, so it takes a second tap within 3 s
+let endTimer = null;
+function onEndTap() {
+  const b = document.getElementById('nav-stop');
+  if (b.classList.contains('confirm')) { clearTimeout(endTimer); resetEndButton(); stopNavigation(); return; }
+  b.classList.add('confirm'); b.textContent = 'Tap to end';
+  endTimer = setTimeout(resetEndButton, 3000);
+}
+function resetEndButton() {
+  const b = document.getElementById('nav-stop');
+  b.classList.remove('confirm'); b.textContent = S.walkOnly ? 'End walk' : 'End trip';
+}
+document.getElementById('nav-stop').addEventListener('click', onEndTap);
 document.getElementById('nav-view').addEventListener('click', toggleNavView);
 document.getElementById('history-btn').addEventListener('click', () => { track('activity-opened', 'Activity opened'); renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
 document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
