@@ -201,7 +201,12 @@ body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
 /* ── Nav overlay ── */
 #nav-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1500; display: none; flex-direction: column; pointer-events: none; padding: 8px 8px 0; }
 #nav-overlay.active { display: flex; }
-#nav-card { color: white; padding: 14px 16px 10px; pointer-events: auto; transition: background 0.4s; border-radius: 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.18); }
+#nav-card { color: white; padding: 14px 16px 9px; pointer-events: auto; transition: background 0.4s; border-radius: 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.18); touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+#nav-card.preview { outline: 3px solid rgba(255,255,255,0.55); outline-offset: -3px; }
+#nav-card.slide-l { animation: slideL 0.22s ease-out; } #nav-card.slide-r { animation: slideR 0.22s ease-out; }
+@keyframes slideL { from { transform: translateX(28px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+@keyframes slideR { from { transform: translateX(-28px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+#nav-pager { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; font-size: 11px; opacity: 0.8; }
 #nav-card.walk    { background: #1e1b4b; }
 #nav-card.cycle   { background: #7f1d1d; }
 #nav-card.pickup  { background: #14532d; }
@@ -369,6 +374,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
         <div id="nav-dist">–</div>
       </div>
       <div id="nav-bar"><div id="nav-bar-fill" style="width:0%"></div></div>
+      <div id="nav-pager"><span id="nav-pager-l"></span><span id="nav-pager-r"></span></div>
     </div>
     <div id="nav-station"></div>
   </div>
@@ -399,7 +405,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 12 Oct, 23:59</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 13 Oct, 00:10</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
@@ -1300,27 +1306,38 @@ function updateNavCard() {
   if (!NAV.active) return;
   const cur = NAV.steps[NAV.current];
   if (!cur) return;
-  const target = NAV.steps[NAV.current + 1] || cur;
-  const total = NAV.steps.length;
+  const n = NAV.steps.length, live = NAV.current + 1;
+  if (NAV.preview != null && (NAV.preview <= live || NAV.preview >= n)) { NAV.preview = null; hidePreviewMarker(); }
+  const ti = NAV.preview ?? Math.min(live, n - 1);
+  const target = NAV.steps[ti] || cur;
 
-  let dist = '';
-  if (NAV.userLat !== undefined && target.maneuver?.location) {
-    const [tLon, tLat] = target.maneuver.location;
-    dist = fmtDist(haversine(NAV.userLat, NAV.userLon, tLat, tLon));
-  } else if (cur.distance > 8) {
-    dist = fmtDist(cur.distance);
-  }
+  // Distance along the route from you to the turn shown
+  let distM = null;
+  if (NAV.userLat !== undefined && NAV.steps[live]?.maneuver?.location) {
+    const [lLon, lLat] = NAV.steps[live].maneuver.location;
+    distM = haversine(NAV.userLat, NAV.userLon, lLat, lLon);
+    for (let k = live; k < ti; k++) distM += NAV.steps[k].distance || 0;
+  } else if (cur.distance > 8) distM = cur.distance;
 
-  const now = cur._synthetic ? '' : (cur.maneuver.type === 'depart' || cur.maneuver.type === 'continue')
+  const previewing = NAV.preview != null;
+  const now = previewing ? (NAV.steps[ti + 1] ? `Then: ${stepLabel(NAV.steps[ti + 1]).replace(/\.$/, '')}` : '')
+    : cur._synthetic ? '' : (cur.maneuver.type === 'depart' || cur.maneuver.type === 'continue')
     ? stepLabel(cur).replace(/\.$/, '')
     : (cur.name ? `On ${cur.name}` : '');
 
   document.getElementById('nav-maneuver').textContent  = stepIconFor(target);
   document.getElementById('nav-primary').textContent   = stepLabel(target);
   document.getElementById('nav-road').textContent      = now;
-  document.getElementById('nav-dist').textContent      = dist;
-  document.getElementById('nav-card').className        = legCardClass(target.legType === 'walk' && cur.legType === 'cycle' ? 'cycle' : target.legType);
-  document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/Math.max(1,total-1))*100)}%`;
+  document.getElementById('nav-dist').textContent      = distM != null ? fmtDist(distM) : '';
+  const card = document.getElementById('nav-card');
+  card.classList.remove('walk', 'cycle', 'pickup', 'dropoff');
+  card.classList.add(legCardClass(!previewing && target.legType === 'walk' && cur.legType === 'cycle' ? 'cycle' : target.legType));
+  card.classList.toggle('preview', previewing);
+  document.getElementById('nav-bar-fill').style.width   = `${Math.round((NAV.current/Math.max(1,n-1))*100)}%`;
+
+  const turns = turnIndices(), ahead = turns.length;   // turns still to come
+  document.getElementById('nav-pager-l').textContent = previewing ? `Turn ${turns.indexOf(ti) + 1} of ${ahead} ahead` : 'Next turn';
+  document.getElementById('nav-pager-r').textContent = previewing ? '‹ Swipe back · tap for now' : (ahead > 1 ? 'Swipe for later turns ›' : '');
 
   const rem = remainingSecs();
   document.getElementById('nav-eta-time').textContent   = rem >= 30 ? `${fmtTime(rem)} left` : 'Almost there';
@@ -1329,6 +1346,69 @@ function updateNavCard() {
 
   renderNavStation();
 }
+
+// ─── Swipe through upcoming turns (like Google Maps) ──────────────────────────
+// The turns you can swipe to: the live next one, then every later step except the
+// "head along" departures straight after picking up or returning a bike
+function turnIndices() {
+  const live = NAV.current + 1, out = [];
+  for (let k = live; k < NAV.steps.length; k++) if (k === live || NAV.steps[k].maneuver?.type !== 'depart') out.push(k);
+  return out;
+}
+// Swipe left on the turn card for the next turn after this one, right to go back.
+// The map glides to that turn; tap the card, swipe back, or wait 15 s to return.
+let previewMarker = null;
+function showPreviewMarker(step) {
+  const [lon, lat] = step.maneuver.location;
+  const icon = L.divIcon({ className: '', iconSize: [32,32], iconAnchor: [16,16],
+    html: `<div style="width:32px;height:32px;border-radius:50%;background:white;border:3px solid #111;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#111;">${stepIconFor(step)}</div>` });
+  if (previewMarker) map.removeLayer(previewMarker);
+  previewMarker = L.marker([lat, lon], { icon, zIndexOffset: 900 }).addTo(map);
+}
+function hidePreviewMarker() { if (previewMarker) { map.removeLayer(previewMarker); previewMarker = null; } }
+
+function setPreview(i) {
+  const n = NAV.steps.length, live = NAV.current + 1;
+  i = Math.max(live, Math.min(n - 1, i));
+  if (i === live) { exitPreview(); return; }
+  NAV.preview = i;
+  NAV.paused = true; NAV.userPanUntil = Infinity;     // hold the camera on the turn
+  showPreviewMarker(NAV.steps[i]);
+  const [lon, lat] = NAV.steps[i].maneuver.location;
+  map._ml.easeTo({ center: [lon, lat], duration: 600 });
+  clearTimeout(NAV.previewTimer); NAV.previewTimer = setTimeout(exitPreview, 15000);
+  updateNavCard();
+  track('nav-preview-turn', 'Swiped to a later turn');
+}
+function exitPreview() {
+  clearTimeout(NAV.previewTimer);
+  if (NAV.preview == null) return;
+  NAV.preview = null; hidePreviewMarker();
+  NAV.userPanUntil = 0;                                // the frame loop eases back to you
+  updateNavCard();
+}
+function stepSwipe(dir) {
+  if (!NAV.active) return;
+  const turns = turnIndices(), at = Math.max(0, turns.indexOf(NAV.preview ?? NAV.current + 1));
+  const to = turns[Math.max(0, Math.min(turns.length - 1, at + dir))];
+  if (to == null) return;
+  setPreview(to);
+  const card = document.getElementById('nav-card');
+  card.classList.remove('slide-l', 'slide-r'); void card.offsetWidth;
+  card.classList.add(dir > 0 ? 'slide-l' : 'slide-r');
+}
+(() => {
+  const card = document.getElementById('nav-card');
+  let x0 = null, y0 = 0, swiped = false;
+  card.addEventListener('pointerdown', e => { x0 = e.clientX; y0 = e.clientY; swiped = false; });
+  card.addEventListener('pointerup', e => {
+    if (x0 == null) return;
+    const dx = e.clientX - x0, dy = e.clientY - y0; x0 = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.3) { swiped = true; stepSwipe(dx < 0 ? 1 : -1); }
+  });
+  card.addEventListener('pointercancel', () => { x0 = null; });
+  card.addEventListener('click', () => { if (!swiped && NAV.preview != null) exitPreview(); swiped = false; });
+})();
 
 // Live count at the station you're heading to, under the nav card
 function renderNavStation() {
@@ -1674,7 +1754,7 @@ function startNavigation(resumed) {
   Object.assign(NAV, { active: true, proximityFor: null, lastAlert: null, userLat: undefined, userLon: undefined,
     view: 'follow', gpsHeading: null, heading: null, headingTarget: null, aheadBearing: null,
     dispLat: null, dispLon: null, dispHeading: null, camReady: false, camStarted: false, paused: false,
-    resync: resumed, pinKey: null });
+    resync: resumed, pinKey: null, preview: null });
   setViewLabel();
   startRider3d();
   requestWakeLock();
@@ -1705,6 +1785,7 @@ function stopNavigation() {
   if (NAV.riderMarker)             { map.removeLayer(NAV.riderMarker); NAV.riderMarker=null; }
   if (NAV.startHidden && markerStart) map.addLayer(markerStart);
   NAV.startHidden = false;
+  clearTimeout(NAV.previewTimer); NAV.preview = null; hidePreviewMarker();
   stopCamLoop();
   document.getElementById('search-panel').classList.remove('nav-active');
   document.getElementById('journey-panel').classList.remove('nav-active');
@@ -1920,9 +2001,22 @@ function biasPoint() {
   return { lat: c.lat, lon: c.lng };
 }
 
+// "E2", "E2 0", "E2 0QN": UK postcodes go to postcodes.io, which is quick and exact
+const POSTCODE_LIKE = /^[a-z]{1,2}\d[a-z\d]?(\s*\d[a-z]{0,2})?$/i;
+async function postcodeSuggestions(q, signal) {
+  const res = await fetch(`https://api.postcodes.io/postcodes?q=${encodeURIComponent(q)}&limit=4`, { signal });
+  if (!res.ok) return [];
+  return ((await res.json()).result || []).map(r => ({ main: r.postcode,
+    sub: ['Postcode', r.admin_ward, r.admin_district].filter(Boolean).join(' · '), lat: r.latitude, lon: r.longitude }));
+}
+
 async function getSuggestions(q, signal) {
+  const pc = POSTCODE_LIKE.test(q.trim())
+    ? postcodeSuggestions(q.trim(), signal).catch(e => { if (e.name === 'AbortError') throw e; return []; })
+    : Promise.resolve([]);
   try {
-    return await photonSuggestions(q, signal);
+    const main = await photonSuggestions(q, signal);
+    return [...(await pc), ...main];
   } catch(e) {
     if (e.name === 'AbortError') throw e;              // superseded by newer typing, not a failure
     console.warn('Photon failed, falling back to Nominatim:', e.message);
@@ -1998,6 +2092,34 @@ async function nominatimSuggestions(q, num) {
   }).filter(x => x.main);
 }
 
+// Places you've picked before, newest first (saved on this phone only)
+const RECENT_KEY = 'rothar-recent-v1';
+function loadRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } }
+function saveRecent(it) {
+  if (it.main === 'Your location') return;
+  const r = loadRecent().filter(x => x.main.toLowerCase() !== it.main.toLowerCase());
+  r.unshift({ main: it.main, sub: (it.sub || '').replace(/^Recent( · )?/, ''), lat: it.lat, lon: it.lon });
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0, 15))); } catch (e) {}
+}
+// Answers we can give with no network at all
+function localSuggestions(q) {
+  const ql = q.toLowerCase();
+  const recent = loadRecent().filter(x => !ql || x.main.toLowerCase().includes(ql))
+    .slice(0, ql ? 3 : 5).map(x => ({ ...x, sub: ['Recent', x.sub].filter(Boolean).join(' · ') }));
+  if (ql.length < 2) return { recent, stations: [] };
+  const stations = S.stations.filter(s => s.commonName.toLowerCase().split(/[\s,]+/).some(w => w.startsWith(ql))
+                                       || (ql.length >= 4 && s.commonName.toLowerCase().includes(ql)))
+    .slice(0, 3).map(s => ({ main: s.commonName, sub: `Docking station · ${prop(s,'NbBikes')} bikes, ${prop(s,'NbEmptyDocks')} docks`, lat: s.lat, lon: s.lon }));
+  return { recent, stations };
+}
+// Recent first, then the address search, then matching docking stations; no duplicates
+function mergeSuggestions(q, remote) {
+  const { recent, stations } = localSuggestions(q), seen = new Set();
+  return [...recent, ...(remote || []), ...stations].filter(x => {
+    const k = x.main.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true;
+  }).slice(0, 7);
+}
+
 function bindAutocomplete(inputId, listId, onSelect) {
   const input = document.getElementById(inputId);
   const list  = document.getElementById(listId);
@@ -2014,27 +2136,31 @@ function bindAutocomplete(inputId, listId, onSelect) {
     list.querySelectorAll('.ac-item').forEach(el => el.addEventListener('mousedown', e => {
       e.preventDefault();
       const it = items[parseInt(el.dataset.i)];
-      hide(); onSelect(it.lat, it.lon, it.main);
-      track(it.sub.startsWith('Street level') ? 'search/street-level' : /^\d/.test(it.main) ? 'search/address' : 'search/place', 'Search result picked');
+      hide(); saveRecent(it); onSelect(it.lat, it.lon, it.main);
+      track(it.sub.startsWith('Recent') ? 'search/recent' : it.sub.startsWith('Docking') ? 'search/station' : it.sub.startsWith('Postcode') ? 'search/postcode'
+        : it.sub.startsWith('Street level') ? 'search/street-level' : /^\d/.test(it.main) ? 'search/address' : 'search/place', 'Search result picked');
     }));
   };
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (letterCount(q) < MIN_QUERY) { inflight?.abort(); hide(); return; }
-    if (cache[q]) { inflight?.abort(); show(cache[q]); return; }
-    const near = fromPrefix(q); if (near) show(near);   // keep the list up instead of blinking
+    const enough = letterCount(q) >= MIN_QUERY || POSTCODE_LIKE.test(q);
+    if (!enough) { inflight?.abort(); show(mergeSuggestions(q, [])); return; }
+    if (cache[q]) { inflight?.abort(); show(mergeSuggestions(q, cache[q])); return; }
+    const instant = mergeSuggestions(q, fromPrefix(q));      // recent + stations + last answer, straight away
+    if (instant.length) show(instant);
     timer = setTimeout(async () => {
       inflight?.abort();
       const ctl = inflight = new AbortController();
       try {
         const its = await getSuggestions(q, ctl.signal); cache[q] = its;
-        if (inflight === ctl && document.activeElement === input && input.value.trim() === q) show(its);
+        if (inflight === ctl && document.activeElement === input && input.value.trim() === q) show(mergeSuggestions(q, its));
       } catch(e) { if (e.name !== 'AbortError' && inflight === ctl) hide(); }
     }, 120);
   });
   input.addEventListener('blur',  () => setTimeout(hide, 200));
-  input.addEventListener('focus', () => { const q=input.value.trim(); if(letterCount(q)>=MIN_QUERY&&cache[q]) show(cache[q]); });
+  // Tapping into the box shows recent places straight away, like Google Maps
+  input.addEventListener('focus', () => { const q = input.value.trim(); show(mergeSuggestions(q, cache[q] || [])); });
   input.addEventListener('keydown', e => { if(e.key==='Escape') hide(); });
 }
 
@@ -2111,7 +2237,7 @@ bindAutocomplete('to-input',  'to-ac',  setEnd);
 let moveTimer;
 map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(moveTimer); moveTimer = setTimeout(renderStations, 150); } });
 // During navigation, a drag/pinch by you pauses the follow camera for a few seconds
-map.on('move', e => { if (NAV.active && e.originalEvent) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
+map.on('move', e => { if (NAV.active && e.originalEvent && NAV.preview == null) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); }, 15000);   // keeps the arrival time honest when you stop
