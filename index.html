@@ -405,7 +405,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 13 Oct, 00:10</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 13 Oct, 22:15</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
@@ -1981,7 +1981,8 @@ function setEnd(lat, lon, label) {
   document.getElementById('to-clear').classList.add('visible');
   if (markerEnd) map.removeLayer(markerEnd);
   markerEnd = L.marker([lat,lon], { icon: makeEndIcon() }).addTo(map);
-  loadStations();
+  if (!S.start) map.setView([lat,lon],15);        // no start yet: jump to the destination
+  loadStations();                                 // with a start, planJourney fits both on screen
 }
 
 // ─── Autocomplete — Photon (matches partial words), Nominatim fallback ──────
@@ -2127,6 +2128,12 @@ function bindAutocomplete(inputId, listId, onSelect) {
   // Nearest earlier answer for a prefix of q, shown instantly while the new one loads
   const fromPrefix = q => { for (let i = q.length - 1; i >= MIN_QUERY; i--) { const c = cache[q.slice(0, i)]; if (c) return c; } return null; };
   const hide = () => list.style.display = 'none';
+  const choose = it => {
+    hide(); input.blur();                                    // blur also closes the phone keyboard
+    saveRecent(it); onSelect(it.lat, it.lon, it.main);
+    track(it.sub.startsWith('Recent') ? 'search/recent' : it.sub.startsWith('Docking') ? 'search/station' : it.sub.startsWith('Postcode') ? 'search/postcode'
+      : it.sub.startsWith('Street level') ? 'search/street-level' : /^\d/.test(it.main) ? 'search/address' : 'search/place', 'Search result picked');
+  };
   const show = items => {
     if (!items.length) { hide(); return; }
     list.innerHTML = items.map((it,i) =>
@@ -2135,10 +2142,7 @@ function bindAutocomplete(inputId, listId, onSelect) {
     list.style.display = 'block';
     list.querySelectorAll('.ac-item').forEach(el => el.addEventListener('mousedown', e => {
       e.preventDefault();
-      const it = items[parseInt(el.dataset.i)];
-      hide(); saveRecent(it); onSelect(it.lat, it.lon, it.main);
-      track(it.sub.startsWith('Recent') ? 'search/recent' : it.sub.startsWith('Docking') ? 'search/station' : it.sub.startsWith('Postcode') ? 'search/postcode'
-        : it.sub.startsWith('Street level') ? 'search/street-level' : /^\d/.test(it.main) ? 'search/address' : 'search/place', 'Search result picked');
+      choose(items[parseInt(el.dataset.i)]);
     }));
   };
   input.addEventListener('input', () => {
@@ -2161,7 +2165,30 @@ function bindAutocomplete(inputId, listId, onSelect) {
   input.addEventListener('blur',  () => setTimeout(hide, 200));
   // Tapping into the box shows recent places straight away, like Google Maps
   input.addEventListener('focus', () => { const q = input.value.trim(); show(mergeSuggestions(q, cache[q] || [])); });
-  input.addEventListener('keydown', e => { if(e.key==='Escape') hide(); });
+  // Enter: go straight to the best match for the full text, no need to tap a suggestion
+  async function submit() {
+    clearTimeout(timer); inflight?.abort();
+    const ctl = inflight = new AbortController();
+    const q = input.value.trim();
+    if (!q) return;
+    hide(); toast('Finding address…', 0);
+    let items = cache[q];
+    try {
+      if (!items || !items.length) { items = await getSuggestions(q, ctl.signal); cache[q] = items; }
+      // Photon can miss full addresses with postcodes; Nominatim handles those better
+      if (!items.length) items = await nominatimSuggestions(q, splitHouseNumber(q).num).catch(() => []);
+    } catch (e) { if (e.name === 'AbortError') return; items = []; }
+    if (inflight !== ctl || input.value.trim() !== q) return;    // you kept typing, so drop this result
+    if (!items.length) items = mergeSuggestions(q, []);          // last resort: recent places, stations
+    if (!items.length) { toast(`Couldn't find "${q}"`, 3500); return; }
+    toast('');
+    track('search/enter', 'Search submitted with Enter');
+    choose(items[0]);
+  }
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hide();
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); }
+  });
 }
 
 // ─── Clear buttons ─────────────────────────────────────────────────────────────
