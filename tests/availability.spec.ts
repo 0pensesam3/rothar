@@ -1,0 +1,74 @@
+import { test, expect } from './support/harness';
+import { HOME } from './support/world';
+
+declare const S: any;
+
+const PICKUP = 'BikePoints_101', RETURN = 'BikePoints_301';
+
+test.describe('Dock availability', () => {
+  test.beforeEach(async ({ app }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    expect(await app.state(() => [S.pickup.id, S.dropoff.id])).toEqual([PICKUP, RETURN]);
+  });
+
+  test('A1 live count at the next dock shows under the turn card', async ({ app, page }) => {
+    await app.startNav();
+    await app.moveTo(HOME.lat, HOME.lon);
+    await expect(page.locator('#nav-station')).toBeVisible();
+    await expect(page.locator('#nav-station')).toContainText('6');
+    await expect(page.locator('#nav-station')).toContainText('Cambridge Heath Road');
+  });
+
+  test('A2 pick-up dock running low raises the popup', async ({ app, page }) => {
+    app.setStation(PICKUP, { bikes: 1 });                 // someone took bikes after you planned
+    await app.startNav();
+    await app.moveTo(HOME.lat, HOME.lon);
+    await expect(page.locator('#avail-popup')).toBeVisible();
+    await expect(page.locator('#avail-popup-title')).toContainText('Only 1 bike left');
+    await expect(page.locator('#avail-wait')).toBeVisible();
+    await expect(page.locator('#avail-reroute')).toBeVisible();
+  });
+
+  test('A3 return dock is checked about 5 minutes out, not only on arrival', async ({ app, page, world }) => {
+    await app.startNav();
+    app.setStation(RETURN, { empty: 1 });                 // the dock fills up while you ride
+    const cyc = (await app.routeLegs())[1].coords.length;
+    let checkedAtSecsLeft: number | null = null, alertAtSecsLeft: number | null = null;
+    await app.travel({ stepMs: 20, each: async (i, leg) => {
+      if (leg !== 'cycle') return;
+      const secsLeft = ((cyc - 1 - i) * 15) / 4.5;         // route points are 15 m apart, riding at 4.5 m/s
+      if (checkedAtSecsLeft == null && world.requests.some(u => u.endsWith(`/BikePoint/${RETURN}`))) checkedAtSecsLeft = secsLeft;
+      if (alertAtSecsLeft == null && await page.locator('#avail-popup').isVisible()) alertAtSecsLeft = secsLeft;
+    } });
+    expect(checkedAtSecsLeft, 'return dock was re-checked while still riding').not.toBeNull();
+    expect(checkedAtSecsLeft!, 'seconds of riding left when the return dock was first re-checked').toBeGreaterThanOrEqual(120);
+    expect(alertAtSecsLeft, 'popup about the full dock came while there was time to react').not.toBeNull();
+  });
+
+  test('A4 Reroute picks another dock and navigation carries on', async ({ app, page }) => {
+    app.setStation(PICKUP, { bikes: 1 });
+    await app.startNav();
+    await app.moveTo(HOME.lat, HOME.lon);
+    await expect(page.locator('#avail-popup')).toBeVisible();
+    await page.locator('#avail-reroute').click();
+    await expect(page.locator('#toast')).toContainText('Pick-up rerouted to');
+    const id = await app.state(() => S.pickup.id);
+    expect(id).not.toBe(PICKUP);
+    await expect(page.locator('#nav-overlay')).toHaveClass(/active/);
+    await expect(page.locator('#nav-station')).not.toContainText('Cambridge Heath Road');
+  });
+
+  test('A5 after Wait, a recovered dock clears the warning', async ({ app, page }) => {
+    test.setTimeout(60_000);
+    app.setStation(PICKUP, { bikes: 1 });
+    await app.startNav();
+    await app.moveTo(HOME.lat, HOME.lon);
+    await expect(page.locator('#avail-popup')).toBeVisible();
+    await page.locator('#avail-wait').click();
+    await expect(page.locator('#avail-popup')).toBeHidden();
+    app.setStation(PICKUP, { bikes: 5 });                 // bikes come back
+    await expect(page.locator('#toast')).toContainText(/5 bikes at .* again/, { timeout: 25_000 });
+    await expect(page.locator('#avail-popup')).toBeHidden();
+  });
+});
