@@ -1,0 +1,15 @@
+{
+  "name": "rothar-ux-tests",
+  "private": true,
+  "description": "Daily UX checks for Rothar. The app itself has no build step; this is only for the tests.",
+  "scripts": {
+    "test": "playwright test --project=mocked",
+    "test:live": "playwright test --project=live",
+    "test:all": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "maplibre-gl": "4.7.1",
+    "three": "0.160.0"
+  }
+}

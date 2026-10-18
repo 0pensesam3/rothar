@@ -32,3 +32,6 @@ The app counts anonymous usage with GoatCounter (no cookies, no personal data): 
 - `index.html` is the whole app
 - `manifest.json` and `icon-*.png` make it installable as a home-screen app
 - `.nojekyll` tells GitHub Pages to serve the files as they are
+- `EXPECTATIONS.md` lists what the app should do; the daily UX check tests against it
+- `tests/`, `package.json` and `playwright.config.ts` are the automated checks (not part of the app)
+- `.github/` holds the daily UX check: see `.github/ux-agent/README.md`

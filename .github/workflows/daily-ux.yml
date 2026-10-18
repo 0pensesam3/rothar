@@ -1,0 +1,306 @@
+# Daily UX check: a tester, a fixer and a judge, each a separate Claude session.
+#
+#   1. Tester  runs the checks, looks at the screenshots, writes the day's report
+#              and picks at most two app bugs. Can't change code.
+#   2. Fixer   changes index.html for those bugs only, and the workflow opens a PR.
+#              Skipped when an earlier fix PR is still open, or nothing was picked.
+#   3. Judge   re-runs every check on the fix branch, compares before and after,
+#              and posts a verdict on the PR. Never sees the fixer's reasoning. Can't change code.
+#
+# Nothing here merges. You approve by merging the PR; merging one runs the check again.
+# Setup steps are in .github/ux-agent/README.md.
+
+name: Daily UX check
+
+on:
+  schedule:
+    - cron: "12 5 * * *"        # 05:12 UTC: 06:12 in summer, 05:12 in winter (London)
+  workflow_dispatch:
+    inputs:
+      fix:
+        description: "Let the fixer open a PR if the tester finds something"
+        type: boolean
+        default: true
+  pull_request:
+    types: [closed]             # a merged agent PR starts the next round straight away
+
+concurrency:
+  group: daily-ux
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  REAL_TILES: "1"               # real map tiles in screenshots; the checks themselves use fake London
+
+jobs:
+  test:
+    name: "1 · Tester"
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'ux-agent'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      fix_count: ${{ steps.pick.outputs.fix_count }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - name: Run the checks (fake London and live data)
+        continue-on-error: true
+        run: npx playwright test
+
+      - name: Summarise results
+        run: |
+          node tests/support/summarise.mjs ux-run/results.json > ux-run/summary.md
+          cat ux-run/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tester agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read .github/ux-agent/tester.md and do exactly what it says."
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write(ux-run/**)"
+
+      - name: How many bugs to fix today
+        id: pick
+        if: always()
+        run: |
+          n=$(node -e "try{const f=require('./ux-run/findings.json');console.log((f.fix_now||[]).length)}catch(e){console.log(0)}")
+          echo "fix_count=$n" >> "$GITHUB_OUTPUT"
+          echo "Bugs picked for the fixer: $n"
+
+      - name: Post the report to the Daily UX report issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create ux-report --color 0e8a16 --description "Daily UX check reports" 2>/dev/null || true
+          num=$(gh issue list --label ux-report --state open --json number -q '.[0].number')
+          if [ -z "$num" ]; then
+            url=$(gh issue create --title "Daily UX report" --label ux-report \
+              --body "The daily UX check posts one comment here per run. Screenshots and full results are attached to each run.")
+            num=${url##*/}
+          fi
+          {
+            echo "### $(date -u +'%a %-d %b %Y') · [run]($RUN_URL)"
+            echo
+            if [ -f ux-run/report.md ]; then cat ux-run/report.md; else echo "The tester didn't write a report. Results summary:"; echo; cat ux-run/summary.md; fi
+          } > comment.md
+          gh issue comment "$num" --body-file comment.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-tester
+          path: |
+            ux-run/
+            !ux-run/html/
+          retention-days: 14
+          include-hidden-files: false
+
+  gate:
+    name: "Is a fix PR already waiting?"
+    needs: test
+    if: needs.test.outputs.fix_count != '' && needs.test.outputs.fix_count != '0' && (github.event_name != 'workflow_dispatch' || inputs.fix)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    outputs:
+      waiting: ${{ steps.check.outputs.waiting }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          open=$(gh pr list --repo "$REPO" --label ux-agent --state open --json number -q '.[0].number')
+          echo "waiting=$open" >> "$GITHUB_OUTPUT"
+          if [ -n "$open" ]; then
+            gh pr comment "$open" --repo "$REPO" --body "Today's check ran again. No new fix was opened while this one is waiting for you. Today's findings are in the Daily UX report issue."
+          fi
+
+  fix:
+    name: "2 · Fixer"
+    needs: [test, gate]
+    if: needs.gate.outputs.waiting == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pr: ${{ steps.pr.outputs.number }}
+      branch: ${{ steps.pr.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ux-tester
+          path: ux-run-tester
+
+      - name: Fixer agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read .github/ux-agent/fixer.md and do exactly what it says."
+          claude_args: |
+            --model claude-sonnet-5-5
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Edit(index.html),Write(ux-run/**),Bash(npx playwright test:*)"
+
+      # The fixer may change index.html and nothing else. Checked here, outside the agent.
+      - name: Check which files the fixer changed
+        id: guard
+        run: |
+          changed=$(git status --porcelain --untracked-files=all | sed 's/^...//' | sort -u)
+          echo "Changed files:"; echo "${changed:-none}"
+          other=$(echo "$changed" | grep -v -x 'index.html' | grep -v '^$' || true)
+          if [ -n "$other" ]; then
+            echo "::error::The fixer changed files it isn't allowed to touch: $other"
+            exit 1
+          fi
+          if [ -z "$changed" ]; then echo "has_change=" >> "$GITHUB_OUTPUT"; else echo "has_change=1" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Open the pull request
+        id: pr
+        if: steps.guard.outputs.has_change == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          branch="ux-fix/$(date -u +%Y-%m-%d)-run${{ github.run_number }}"
+          if [ -f ux-run/fix-notes.md ]; then
+            title=$(head -n1 ux-run/fix-notes.md | sed 's/^#* *//' | cut -c1-80)
+            tail -n +2 ux-run/fix-notes.md > body.md
+          else
+            title="Fix from the daily UX check"; echo "The fixer left no notes." > body.md
+          fi
+          [ -n "$title" ] || title="Fix from the daily UX check"
+          {
+            echo; echo "---"
+            echo "Opened by the daily UX check ([run]($RUN_URL)). The tester's report is in the Daily UX report issue."
+            echo "A separate judge agent re-runs every check on this branch and posts its verdict below."
+            echo "Nothing merges automatically. Merging this starts the next check."
+          } >> body.md
+          git config user.name "rothar-ux-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add index.html
+          git commit -m "$title" -m "From the daily UX check, run ${{ github.run_id }}."
+          git push origin "$branch"
+          gh label create ux-agent --color 5319e7 --description "Opened by the daily UX agent" 2>/dev/null || true
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" --title "$title" --body-file body.md --label ux-agent
+          echo "number=$(gh pr view "$branch" --json number -q .number)" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+  judge:
+    name: "3 · Judge"
+    needs: [fix]
+    if: needs.fix.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.fix.outputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npx playwright install --with-deps chromium
+
+      # Only the tester's output. The fixer's notes and the PR description are left out on purpose.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ux-tester
+          path: ux-run-before
+
+      - name: Run every check on the fix branch
+        continue-on-error: true
+        run: npx playwright test
+
+      - name: Summarise results and save the diff
+        run: |
+          node tests/support/summarise.mjs ux-run/results.json > ux-run/summary.md
+          git diff "origin/${{ github.event.repository.default_branch }}...HEAD" > ux-run/fix.diff
+          cat ux-run/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Judge agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read .github/ux-agent/judge.md and do exactly what it says."
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write(ux-run/verdict.md)"
+
+      - name: Post the verdict on the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ needs.fix.outputs.pr }}
+        run: |
+          if [ ! -f ux-run/verdict.md ]; then echo "VERDICT: CONCERNS" > ux-run/verdict.md; echo; echo "The judge didn't write a verdict. Treat this PR as unreviewed." >> ux-run/verdict.md; fi
+          verdict=$(head -n1 ux-run/verdict.md | sed -n 's/^VERDICT: *\([A-Z]*\).*/\1/p')
+          { echo "## Judge"; echo; cat ux-run/verdict.md; echo; echo "<details><summary>Check results on this branch</summary>"; echo; cat ux-run/summary.md; echo "</details>"; } > comment.md
+          gh pr comment "$PR" --body-file comment.md
+          case "$verdict" in
+            PASS) label=judge-pass; colour=0e8a16 ;;
+            FAIL) label=judge-fail; colour=b60205 ;;
+            *)    label=judge-concerns; colour=fbca04 ;;
+          esac
+          gh label create "$label" --color "$colour" 2>/dev/null || true
+          gh pr edit "$PR" --add-label "$label"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-judge
+          path: |
+            ux-run/
+            !ux-run/html/
+          retention-days: 14
