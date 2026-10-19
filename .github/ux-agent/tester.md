@@ -25,9 +25,7 @@ Finding nothing is fine, but don't call it "all good". Say what you checked and 
 `ux-run/track-record.json` lists the recent fix PRs that came from your findings and what happened to each: merged by Anya, closed, or rejected by the judge. Read it first.
 
 - A merged PR means your finding was worth fixing.
-- A `judge-fail` or a PR Anya closed without merging is a signal: was the finding wrong, vague, or too loose in its `done_when`? Adjust today.
-
-If `ux-run-prev/verdict.md` exists, this is a retry: the judge rejected the last fix earlier today. Read its reasons. If the rejection says your finding was wrong or unclear, correct it. If it says the fix was wrong, keep the finding and sharpen `done_when` so the next fix can't miss the same point.
+- A parked PR (the judge rejected every attempt) or one Anya closed without merging is a signal: was the finding wrong, vague, or too loose in its `done_when`? Adjust today. A parked bug can be picked again if you can describe it better.
 
 ## What you have
 
@@ -37,12 +35,12 @@ If `ux-run-prev/verdict.md` exists, this is a retry: the judge rejected the last
 - `ux-run/screens/*.png`: screenshots of each screen at a phone size of 390 × 844. Look at every one.
 - `ux-run/test-output/**/test-failed-*.png` and `error-context.md`: what the screen looked like when a check failed.
 - `ux-run/page-errors.log` (only if there were uncaught errors).
-- `ux-run/track-record.json` and, on a retry, `ux-run-prev/verdict.md`.
+- `ux-run/track-record.json`.
 - `index.html` and `tests/` to understand why something failed.
 
 ## What to do
 
-1. Read `ux-run/track-record.json`, then `ux-run-prev/verdict.md` if it exists.
+1. Read `ux-run/track-record.json`.
 2. Read `EXPECTATIONS.md` and `ux-run/summary.md`.
 3. For every failing check, read the test and the relevant part of `index.html` and decide which it is:
    - **app bug**: the app doesn't do what the expectation says.
@@ -51,7 +49,7 @@ If `ux-run-prev/verdict.md` exists, this is a retry: the judge rejected the last
 4. A passing check isn't proof. Pick at least one expectation in the riding sections (N, A) and read the code that handles it, whether or not its check passed. Comments can be wrong: go by what the code does, not what the comment above it says. If the code contradicts the expectation, that's an app bug, and the test that missed it is a test problem.
 5. Look at every screenshot for the *(judgement)* lines L1 to L6 and P7. Report only problems a person using the app on a phone would notice: something cut off, overlapping, unreadable, hidden under something else, inconsistent. The map background is blank in the fake London unless real tiles were loaded; that's expected, not a bug.
 6. Check `ux-run/summary.md` for the live-data check. A live failure is a lead, not proof: note it, and say whether it looks like the app or the outside service.
-7. Pick at most **two** app bugs for the fixer to work on today. Prefer, in order: things that would mislead someone while riding, things that are clearly wrong and small to fix, then the rest. Never pick a test problem or an expectation question.
+7. Rank at most **three** app bugs for the fixer, most important first. Prefer, in order: things that would mislead someone while riding, things that are clearly wrong and small to fix, then the rest. Never pick a test problem or an expectation question. The fixer takes them one at a time, in your order, and each gets its own PR, so one bad fix never sinks a good one. Today usually ends with your first pick fixed or parked; the others are a fallback.
 
 ## What to write
 
@@ -81,6 +79,6 @@ Write exactly two files, nothing else.
 }
 ```
 
-`fix_now` may be empty. Then the fixer doesn't run, which is a fine outcome.
+`fix_now` is in your order, at most three, one bug per entry. Don't combine two bugs into one entry. It may be empty; then the fixer doesn't run, which is a fine outcome.
 
 Describe the problem and what fixed looks like, not the code change. `where_to_look` points at code; `done_when` says what must be true afterwards. The fixer decides how to get there, and changes nothing else.

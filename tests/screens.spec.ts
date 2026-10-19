@@ -15,7 +15,8 @@ async function onScreen(page: Page, loc: Locator, what: string) {
 }
 
 async function apart(a: Locator, b: Locator, what: string) {
-  const x = (await a.boundingBox())!, y = (await b.boundingBox())!;
+  const x = await a.boundingBox(), y = await b.boundingBox();
+  if (!x || !y) return;                                    // not laid out (empty or hidden): nothing to overlap
   const overlap = Math.max(0, Math.min(x.x + x.width, y.x + y.width) - Math.max(x.x, y.x))
                 * Math.max(0, Math.min(x.y + x.height, y.y + y.height) - Math.max(x.y, y.y));
   expect.soft(Math.round(overlap), `${what}: overlapping area in px²`).toBe(0);
@@ -34,11 +35,26 @@ async function planAndNavigate(app: App, page: Page, name: string) {
   await onScreen(page, page.locator('#nav-bottom'), 'trip bar');
   await onScreen(page, page.locator('#nav-stop'), 'End button');
   await apart(page.locator('#nav-card'), page.locator('#nav-bottom'), 'turn card and trip bar');
-  // A message popping up mustn't sit on top of the instruction you're following.
-  // Give the app a few seconds to show one (it warns about the compass after 5 s).
-  await page.locator('#toast').waitFor({ state: 'visible', timeout: 7000 }).catch(() => {});
-  if (await page.locator('#toast').isVisible())
-    await apart(page.locator('#toast'), page.locator('#nav-primary'), `message "${await page.locator('#toast').innerText()}" and the turn instruction`);
+  // A message popping up mustn't sit on top of anything you need while riding: the turn card,
+  // the dock count under it, the view button, the trip bar or End. Moving it from one of these
+  // onto another isn't a fix. Give the app a few seconds to show one (it warns about the
+  // compass after 5 s, and that message is the longest).
+  const msg = page.locator('#toast');
+  await msg.waitFor({ state: 'visible', timeout: 7000 }).catch(() => {});
+  // If none came up by itself, show the longest real one, so the check always runs
+  if (!(await msg.isVisible()))
+    await page.evaluate(() => (window as any).toast?.('No compass reading yet. Tap the view button to allow it', 0));
+  await expect(msg, 'a message is showing to check against').toBeVisible();
+  {
+    await app.shot(`${name}-message`);
+    const text = await msg.innerText();
+    const controls: [string, string][] = [
+      ['#nav-card', 'the turn card'], ['#nav-station', 'the dock count'], ['#nav-view', 'the view button'],
+      ['#nav-bottom', 'the trip bar'], ['#nav-stop', 'the End button'],
+    ];
+    for (const [sel, what] of controls)
+      if (await page.locator(sel).isVisible()) await apart(msg, page.locator(sel), `message "${text}" and ${what}`);
+  }
 }
 
 test.describe('Small screen', () => {
