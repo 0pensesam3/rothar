@@ -2,11 +2,14 @@
 
 Every morning at about 06:00 (London, summer time) three separate Claude sessions check Rothar, fix what they can and wait for you.
 
-| Step | Who | Can change code? | Sees |
-|---|---|---|---|
-| 1 | **Tester** runs every check, looks at the screenshots, writes the report, picks up to 2 bugs | No | Results, screenshots, `EXPECTATIONS.md`, the code |
-| 2 | **Fixer** changes `index.html` for those bugs; the workflow opens a PR | `index.html` only | The tester's findings |
-| 3 | **Judge** re-runs every check on the fix branch and posts a verdict on the PR | No | Before and after results, screenshots, the diff. Not the fixer's notes. |
+| Step | Who | Can change code? | Sees | Does well when |
+|---|---|---|---|---|
+| 1 | **Tester** runs every check, reads the code for at least one riding expectation, looks at the screenshots, writes the report, picks up to 2 bugs | No | Results, screenshots, `EXPECTATIONS.md`, the code, how its last 10 findings turned out | It finds a real bug tied to an expectation ID, with evidence and a checkable `done_when`. Noise counts against it. |
+| 2 | **Fixer** changes `index.html` for those bugs; the workflow opens a PR | `index.html` only | The tester's findings; on a retry, the judge's reasons | Each `done_when` is true and every changed line serves one of the bugs. Nothing else touched. |
+| 3a | **Judge, cold read** describes what the diff does | No | The diff, `index.html`, `EXPECTATIONS.md`. Nothing else is on the machine yet. | It says what the code does, not what anyone claimed. |
+| 3b | **Judge, verdict** re-runs every check and looks for a reason to reject | No | Its own cold read, the IDs it was meant to fix (IDs only), before and after results and screenshots. Never the tester's or the fixer's writing. | It finds a real, evidenced reason to reject, or finds none after looking hard. |
+
+A judge `FAIL` closes the PR and starts the round again: the tester re-checks and the fixer tries again, both with the judge's reasons. At most 3 attempts a day; after that it stops until tomorrow. `CONCERNS` and `PASS` wait for you.
 
 You approve by merging. Merging an agent PR starts the next check straight away. Nothing merges by itself.
 
@@ -26,10 +29,14 @@ Where to look:
 
 ## The rules that keep it honest
 
-- `EXPECTATIONS.md` is the definition of "working". Only you edit it.
+- `EXPECTATIONS.md` is the definition of "working". Only you edit it. Every finding has to quote a line from it.
 - The fixer can only change `index.html`. A workflow step checks this outside the agent and stops the PR if anything else changed, including tests.
 - Only one fix PR at a time. While one is open, the tester still reports daily but no new fix is opened.
+- The judge reads the diff first, in a session with nothing else on the machine, and writes down what it does before it sees any results. This is enforced by the order of the workflow steps, not by asking nicely.
+- The judge never sees the tester's report or findings, the fixer's notes or the PR description. It gets only the IDs it was meant to fix and measures the change against `EXPECTATIONS.md`.
+- The judge starts from FAIL. A rejection must point at a diff line, a check result or a screenshot, because each one costs a round.
 - The judge runs the checks itself, on a fresh machine, rather than trusting the fixer's results.
+- The tester is told how its recent findings turned out (merged, closed, rejected by the judge), so it learns what was worth flagging.
 
 ## The checks
 
@@ -47,4 +54,4 @@ Fake GPS is clean; real GPS jitters and drops out. The fake router makes simple 
 
 ## Cost
 
-Three Claude sessions on days with a fix, one on days without. Rough guide: well under £1 on a quiet day, a few pounds on a day with a fix if you use an API key. With a subscription token it counts against your plan's usage instead. To pause it, disable the workflow in Actions.
+One Claude session on days without a fix, four on days with one (tester, fixer, two judge steps), and up to four more per retry after a judge FAIL, with at most 3 attempts a day. Rough guide: well under £1 on a quiet day, a few pounds on a day with a fix if you use an API key. With a subscription token it counts against your plan's usage instead. To pause it, disable the workflow in Actions.
