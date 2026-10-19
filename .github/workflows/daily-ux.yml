@@ -62,7 +62,7 @@ permissions:
 env:
   CI: "1"
   REAL_TILES: "1"               # real map tiles in screenshots; the checks themselves use fake London
-  MAX_ATTEMPTS: "3"             # attempts per bug before it's parked
+  MAX_ATTEMPTS: "3"             # attempts per bug; the last one goes to Anya if the judge says it is safe
   FINDINGS_RUN: ${{ inputs.findings_run || github.run_id }}
   CONTINUING: ${{ (inputs.findings_run || '') != '' }}
   BUG: ${{ inputs.bug || '0' }}
@@ -540,6 +540,18 @@ jobs:
           if [ ! -f ux-run-judge/verdict.md ]; then printf 'VERDICT: CONCERNS\n\nThe judge did not write a verdict. Treat this PR as unreviewed.\n' > ux-run-judge/verdict.md; fi
           verdict=$(head -n1 ux-run-judge/verdict.md | sed -n 's/^VERDICT: *\([A-Z]*\).*/\1/p')
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          # What happens next. The judge never knows which attempt this is; the workflow decides.
+          #   ready   PASS or CONCERNS
+          #   best    FAIL on the last attempt, but the judge says it's safe: give Anya the best version so far
+          #   retry   FAIL with attempts left
+          #   park    FAIL on the last attempt and not safe to merge
+          safe=$(sed -n 's/^SAFE: *//p' ux-run-judge/verdict.md | head -n1 | tr 'A-Z' 'a-z' | cut -c1-3)
+          if [ "$verdict" != "FAIL" ]; then outcome=ready
+          elif [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then outcome=retry
+          elif [ "$safe" = "yes" ]; then outcome=best
+          else outcome=park; fi
+          echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+          echo "Verdict $verdict, safe '${safe:-not given}', attempt $ATTEMPT of $MAX_ATTEMPTS: $outcome"
           {
             echo "## Judge · attempt $ATTEMPT of $MAX_ATTEMPTS"; echo; cat ux-run-judge/verdict.md; echo
             echo "<details><summary>The judge's cold read of the diff (written before it saw anything else)</summary>"; echo; cat ux-run-judge/first-read.md; echo "</details>"
@@ -567,10 +579,11 @@ jobs:
 
       # PASS or CONCERNS: ready for review, and tell Anya. This is the only time she's pinged about a fix.
       - name: Ready for you
-        if: steps.verdict.outputs.verdict != 'FAIL'
+        if: steps.verdict.outputs.outcome == 'ready' || steps.verdict.outputs.outcome == 'best'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERDICT: ${{ steps.verdict.outputs.verdict }}
+          OUTCOME: ${{ steps.verdict.outputs.outcome }}
         run: |
           line() { sed -n "s/^$1: *//p" ux-run-judge/verdict.md | head -n1 | cut -c1-160; }
           change=$(line CHANGE); [ -n "$change" ] || change=$(gh pr view "$PR" --repo "$REPO" --json title -q .title)
@@ -581,9 +594,12 @@ jobs:
                     awk '/^## Judge/{n++} /^REASON:/{sub(/^REASON: */,""); printf "- Attempt %d: %s\n", n, substr($0,1,160)}')
           # Other bugs parked today
           parked=$(gh pr list --repo "$REPO" --label ux-parked --state closed --search "closed:>=$(date -u +%F)" --json number,title -q '.[] | "- #\(.number) \(.title)"')
-          case "$VERDICT" in
-            PASS) head="✅ Judge passed this. Ready for you to merge." ;;
-            *)    head="🟡 Judge found nothing to reject, but wants a real ride before you merge." ;;
+          case "$OUTCOME:$VERDICT" in
+            best:*) head="🟠 Best attempt after $MAX_ATTEMPTS tries. The judge still objects (below), but says it leaves the app no worse than now. Your call."
+                    gh label create judge-best-effort --color d93f0b --description "Last attempt: not passed, but judged safe to merge" 2>/dev/null || true
+                    gh pr edit "$PR" --repo "$REPO" --add-label judge-best-effort ;;
+            *:PASS) head="✅ Judge passed this. Ready for you to merge." ;;
+            *)      head="🟡 Judge found nothing to reject, but wants a real ride before you merge." ;;
           esac
           {
             echo "@$OWNER $head"
@@ -591,6 +607,7 @@ jobs:
             echo "**Changed:** $change ($stat)"
             echo "**For:** $BUG_ID $BUG_TITLE"
             [ "$VERDICT" = "CONCERNS" ] && [ -n "$reason" ] && [ "$reason" != "none found" ] && echo "**Judge's worry:** $reason"
+            [ "$OUTCOME" = "best" ] && echo "**Still wrong:** $reason"
             if [ -n "$earlier" ]; then echo; echo "**Rejected on the way here:**"; echo "$earlier"; fi
             if [ -n "$parked" ]; then echo; echo "**Parked today (judge rejected every attempt):**"; echo "$parked"; fi
             true
@@ -602,19 +619,19 @@ jobs:
 
       # FAIL: revise the same PR with the judge's reasons, or park it and move to the next bug
       - name: Rejected, revise or move on
-        if: steps.verdict.outputs.verdict == 'FAIL'
+        if: steps.verdict.outputs.outcome == 'retry' || steps.verdict.outputs.outcome == 'park'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUG: ${{ env.BUG }}
         run: |
-          if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+          if [ "${{ steps.verdict.outputs.outcome }}" = "retry" ]; then
             gh pr comment "$PR" --repo "$REPO" --body "Attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS is starting: the fixer revises this PR with the reasons above, keeping what the judge said works."
             bash .github/ux-agent/next-round.sh retry
           else
             gh label create ux-parked --color 6e7781 --description "The judge rejected every attempt; left for later" 2>/dev/null || true
             gh pr edit "$PR" --repo "$REPO" --add-label ux-parked
             gh pr close "$PR" --repo "$REPO" --delete-branch \
-              --comment "Parked after $MAX_ATTEMPTS attempts. The bug stays in the Daily UX report for another day. Moving on to the tester's next pick, if there is one."
+              --comment "Parked after $MAX_ATTEMPTS attempts: the judge still rejects it and says merging it would make the app worse. The bug stays in the Daily UX report for another day. Moving on to the tester's next pick, if there is one."
             bash .github/ux-agent/next-round.sh next-bug
           fi
 

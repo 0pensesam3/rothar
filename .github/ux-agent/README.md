@@ -12,7 +12,10 @@ Every morning at about 06:00 (London, summer time) three separate Claude session
 After the judge:
 - **PASS or CONCERNS**: the draft becomes a normal PR, you're tagged and asked to review. That's the only time you hear about a fix.
 - **FAIL**: the fixer revises the *same* PR with the judge's reasons, keeping what worked. Up to 3 attempts per bug.
-- **Still failing after 3**: the PR is closed and labelled `ux-parked`, and the fixer starts on the tester's next pick. If nothing passes, you get one message at the end saying what was tried and why each was parked.
+- **Still failing after 3, but safe**: you get it anyway, labelled `judge-best-effort`, with what the judge still objects to. The judge writes `SAFE: yes` when merging would leave the app no worse than now, even if the fix is incomplete. It isn't told which attempt it's judging, so the last one gets the same scrutiny as the first.
+- **Still failing after 3, and not safe**: the PR is closed and labelled `ux-parked`, and the fixer starts on the tester's next pick. If every pick ends like this, you get one message saying what was tried and why.
+
+So every bug the tester picks ends with a PR for you within 3 attempts, unless the best the fixer managed would make the app worse.
 
 The tester runs once per check; later attempts reuse its findings rather than re-checking.
 
@@ -20,8 +23,8 @@ You approve by merging. Merging an agent PR starts the next check straight away.
 
 Where to look:
 - **Daily UX report** issue: one comment per run, written by the tester.
-- **PRs labelled `ux-agent`**: fixes, one bug each. Drafts are still being worked on; ignore them. Each attempt gets a judge comment, and the PR carries the latest `judge-pass`, `judge-concerns` or `judge-fail` label.
-- **Your GitHub notifications**: you're tagged when a fix passes or gets CONCERNS (what changed, which expectation it was for, what the judge rejected on the way), when nothing passed today, and when a run breaks. Turn on GitHub mobile push for mentions and review requests to get these on your phone.
+- **PRs labelled `ux-agent`**: fixes, one bug each. Drafts are still being worked on; ignore them. Each attempt gets a judge comment, and the PR carries the latest `judge-pass`, `judge-concerns` or `judge-fail` label, plus `judge-best-effort` when it reached you on the last attempt without passing.
+- **Your GitHub notifications**: you're tagged when a fix passes, gets CONCERNS or is a safe best attempt (what changed, which expectation it was for, what the judge rejected on the way), when nothing passed today, and when a run breaks. Turn on GitHub mobile push for mentions and review requests to get these on your phone.
 - **Actions → Daily UX check → a run → Artifacts**: screenshots and full results (`ux-tester`, `ux-judge`).
 
 ## One-time setup

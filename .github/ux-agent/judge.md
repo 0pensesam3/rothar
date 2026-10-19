@@ -42,10 +42,11 @@ The first line must be exactly one of:
 - `VERDICT: CONCERNS` (fixes the problem with nothing to reject in the code, but it touches riding behaviour that only a real ride can settle). Goes to Anya.
 - `VERDICT: PASS` (you looked hard for a reason to reject and found none).
 
-The next two lines are for Anya's notification, so keep each under 120 characters and in plain words:
+The next three lines are for Anya's notification and the workflow, so keep each under 120 characters and in plain words:
 
 - `CHANGE: ` what the diff does to the app, as a rider would notice it. Example: `CHANGE: Right turns now show a right-turn arrow on the turn card and step list.`
 - `REASON: ` the main reason to reject, or `REASON: none found` on PASS. Example: `REASON: Arrow fixed on the turn card but the step list still shows ↗ for right turns.`
+- `SAFE: yes` or `SAFE: no`, whatever your verdict: would merging this leave the app no worse for a rider than main is now? `no` if it breaks something that worked, makes the problem worse, or adds a new problem a rider would hit. A fix that's incomplete but harmless is `yes`. Example: `SAFE: yes` for a FAIL where the arrow is fixed on the card but not yet in the step list.
 
 Then:
 - **Reasons to reject**, each with its evidence (diff line, check name or screenshot). If there are none, say what you looked for and didn't find.
