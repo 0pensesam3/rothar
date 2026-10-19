@@ -1,7 +1,7 @@
 import { test as base, expect, Page, Route } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { newWorld, stationJSON, valhallaRoute, photonResults, World, HOME } from './world';
+import { newWorld, stationJSON, valhallaRoute, osrmRoute, photonResults, metresBetween, World, HOME } from './world';
 
 // The app's own top-level state, reachable from page.evaluate
 declare const S: any; declare const NAV: any;
@@ -18,13 +18,15 @@ function fakeDevice(start: { lat: number; lon: number } | null) {
     speed: p.speed ?? null, altitude: null, altitudeAccuracy: null }, timestamp: Date.now() });
   const geo = {
     getCurrentPosition(ok: any, err: any) { setTimeout(() => (denied || !pos) ? err?.({ code: denied ? 1 : 2, message: denied ? 'User denied Geolocation' : 'No fix' }) : ok(fix(pos)), 40); },
-    watchPosition(ok: any, err: any) { const i = ++next; watchers.set(i, { ok, err }); if (pos && !denied) setTimeout(() => watchers.has(i) && ok(fix(pos)), 40); return i; },
+    watchPosition(ok: any, err: any) { const i = ++next; watchers.set(i, { ok, err });
+      setTimeout(() => { if (!watchers.has(i)) return; if (denied) err?.({ code: 1, message: 'User denied Geolocation' }); else if (pos) ok(fix(pos)); }, 40);
+      return i; },
     clearWatch(i: number) { watchers.delete(i); },
   };
   Object.defineProperty(Navigator.prototype, 'geolocation', { get: () => geo, configurable: true });
   (window as any).__geo = {
-    move(p: any) { pos = p; watchers.forEach(w => w.ok(fix(p))); },
-    deny(v = true) { denied = v; },
+    move(p: any) { pos = p; if (!denied) watchers.forEach(w => w.ok(fix(p))); },
+    deny(v = true) { denied = v; if (v) watchers.forEach(w => w.err?.({ code: 1, message: 'User denied Geolocation' })); },
     watching: () => watchers.size,
   };
   (window as any).__compass = (h: number) => {
@@ -41,8 +43,11 @@ const OFFLINE_STYLE = JSON.stringify({ version: 8, name: 'offline', sources: {},
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 
+const wait = (ms?: number) => ms ? new Promise(r => setTimeout(r, ms)) : Promise.resolve();
+
 async function wire(page: Page, world: World, live: boolean) {
   await page.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, async route => {
+   try {
     const url = new URL(route.request().url());
     const host = url.hostname;
     if (host !== 'unpkg.com' && host !== 'tiles.openfreemap.org') world.requests.push(url.href);
@@ -64,18 +69,27 @@ async function wire(page: Page, world: World, live: boolean) {
     if (live) return route.continue();
 
     if (host === 'api.tfl.gov.uk') {
+      await wait(world.delay.tfl);
       if (world.down.tfl) return json(route, { message: 'down' }, 503);
       const id = url.pathname.match(/^\/BikePoint\/([^/]+)$/)?.[1];
       if (id) { const s = world.stations.find(x => x.id === id); return s ? json(route, stationJSON(s)) : json(route, {}, 404); }
       return json(route, world.stations.map(stationJSON));
     }
     if (host === 'valhalla1.openstreetmap.de') {
+      await wait(world.delay.valhalla);
       if (world.down.valhalla) return json(route, { error: 'down' }, 503);
       const q = JSON.parse(url.searchParams.get('json') || '{}');
       const [a, b] = q.locations;
-      return json(route, valhallaRoute(a, b, q.costing));
+      const near = world.delay.valhallaTo;
+      if (near && metresBetween(b, near) < 300) await wait(near.ms);
+      return json(route, valhallaRoute(a, b, q.costing, world.streetName));
     }
-    if (host === 'routing.openstreetmap.de') return json(route, { code: 'NoRoute', routes: [] }, world.down.osrm ? 503 : 200);
+    if (host === 'routing.openstreetmap.de') {
+      if (world.down.osrm) return json(route, { code: 'NoRoute', routes: [] }, 503);
+      const m = url.pathname.match(/\/(foot|bike)\/([-\d.]+),([-\d.]+);([-\d.]+),([-\d.]+)/);
+      if (!m) return json(route, { code: 'NoRoute', routes: [] });
+      return json(route, osrmRoute({ lat: +m[3], lon: +m[2] }, { lat: +m[5], lon: +m[4] }, m[1], world.streetName));
+    }
     if (host === 'photon.komoot.io') {
       if (world.down.photon) return json(route, {}, 503);
       return json(route, photonResults(world, url.searchParams.get('q') || ''));
@@ -87,6 +101,10 @@ async function wire(page: Page, world: World, live: boolean) {
     }
     if (host === 'nominatim.openstreetmap.org') return json(route, []);
     return route.abort();
+   } catch (e) {
+     // A slow answer can outlive the test; nothing to do then
+     if (!/closed|disposed|already handled/i.test(String(e))) throw e;
+   }
   });
 }
 
@@ -100,6 +118,13 @@ export class App {
     await this.page.addInitScript(fakeDevice, gps);
     if (opts.deny) await this.page.addInitScript(() => (window as any).__geo.deny(true));
     await this.page.goto('/');
+    // Keep every message the app shows, however briefly, so a test can ask "did it ever say…"
+    await this.page.evaluate(() => {
+      const w = window as any; w.__said = [];
+      const el = document.getElementById('toast')!;
+      new MutationObserver(() => { const t = el.textContent?.trim(); if (t && w.__said.at(-1) !== t) w.__said.push(t); })
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
     if (opts.waitForStations !== false) await expect(this.page.locator('#refresh-badge')).not.toHaveText('Loading…');
   }
 
@@ -167,6 +192,21 @@ export class App {
   }
 
   state<T>(fn: () => T) { return this.page.evaluate(fn); }
+
+  // Has the app said this? Looks at every message shown since the last clearMessages(),
+  // and at the places a message or warning would sit now: not at buttons, chips or the step list.
+  said(re: RegExp) {
+    return this.page.evaluate(([src, flags]) => {
+      const r = new RegExp(src, flags);
+      if (((window as any).__said || []).some((t: string) => r.test(t))) return true;
+      const where = '#toast, #nav-card, #nav-facing, #nav-bottom, #nav-station, #journey-summary, #avail-popup, #resume-banner, ' +
+        '#refresh-badge, [role=alert], [role=status], [aria-live], [id*=banner], [class*=banner], [id*=notice], [class*=notice], ' +
+        '[id*=message], [class*=message], [id*=status], [class*=status], [id*=warning], [class*=warning]';
+      return [...document.querySelectorAll<HTMLElement>(where)].some(e => e.offsetParent !== null && r.test(e.innerText));
+    }, [re.source, re.flags] as const);
+  }
+  clearMessages() { return this.page.evaluate(() => { (window as any).__said = []; }); }
+  messages(): Promise<string[]> { return this.page.evaluate(() => (window as any).__said || []); }
 
   async shot(name: string) {
     fs.mkdirSync(SCREENS, { recursive: true });

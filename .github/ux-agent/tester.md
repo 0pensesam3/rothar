@@ -31,7 +31,7 @@ If `ux-run-prev/verdict.md` exists, this is a retry: the judge rejected the last
 
 ## What you have
 
-- `EXPECTATIONS.md`: what the app should do. Each line has an ID (B1, P3, N6…).
+- `EXPECTATIONS.md`: what the app should do. Each line has an ID (B1, P3, N6…). X1 is the weekly free-roam run, not a daily check; ignore it.
 - `ux-run/summary.md`: today's automated checks against a fake London (fixed docks, routes and search results, a fake GPS walk and ride, a fake compass) and one check against live data. Test names start with the expectation ID.
 - `ux-run/results.json`: full detail if you need it.
 - `ux-run/screens/*.png`: screenshots of each screen at a phone size of 390 × 844. Look at every one.
@@ -49,7 +49,7 @@ If `ux-run-prev/verdict.md` exists, this is a retry: the judge rejected the last
    - **test problem**: the test is wrong, flaky or too strict. Say what's wrong with it. Nobody will fix the app for this.
    - **expectation question**: the expectation itself looks out of date or doubtful. Say why, for Anya to decide.
 4. A passing check isn't proof. Pick at least one expectation in the riding sections (N, A) and read the code that handles it, whether or not its check passed. Comments can be wrong: go by what the code does, not what the comment above it says. If the code contradicts the expectation, that's an app bug, and the test that missed it is a test problem.
-5. Look at every screenshot for the *(judgement)* lines L1 to L3 and P7. Report only problems a person using the app on a phone would notice: something cut off, overlapping, unreadable, hidden under something else, inconsistent. The map background is blank in the fake London unless real tiles were loaded; that's expected, not a bug.
+5. Look at every screenshot for the *(judgement)* lines L1 to L6 and P7. Report only problems a person using the app on a phone would notice: something cut off, overlapping, unreadable, hidden under something else, inconsistent. The map background is blank in the fake London unless real tiles were loaded; that's expected, not a bug.
 6. Check `ux-run/summary.md` for the live-data check. A live failure is a lead, not proof: note it, and say whether it looks like the app or the outside service.
 7. Pick at most **two** app bugs for the fixer to work on today. Prefer, in order: things that would mislead someone while riding, things that are clearly wrong and small to fix, then the rest. Never pick a test problem or an expectation question.
 

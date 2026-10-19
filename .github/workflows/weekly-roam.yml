@@ -1,0 +1,103 @@
+# Weekly free roam: one Claude session uses the app however it likes, in fake London,
+# and reports anything odd. Report only: nothing here opens a PR or feeds the daily fixer.
+# The report goes in the "Weekly free-roam report" issue. See EXPECTATIONS.md X1.
+
+name: Weekly free roam
+
+on:
+  schedule:
+    - cron: "42 6 * * 6"        # Saturdays 06:42 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-roam
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+
+jobs:
+  roam:
+    name: "Free roam"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read              # the agent's job can read the repo and nothing else
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - name: Roamer agent
+        id: roamer
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Read .github/ux-agent/roamer.md and do exactly what it says."
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 80
+            --allowedTools "Read,Glob,Grep,Edit(ux-run/roam/**),Bash(npx playwright test --config tests/roam.config.ts:*)"
+
+      - name: Why the roamer stopped
+        if: failure() && steps.roamer.outcome == 'failure'
+        env:
+          OUT: ${{ steps.roamer.outputs.execution_file }}
+        run: |
+          # Prints only Claude's error message, not the full transcript.
+          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
+          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-roam
+          path: |
+            ux-run/roam/
+            !ux-run/roam/output/
+          retention-days: 30
+
+  post:
+    name: "Post the report"
+    needs: roam
+    if: always() && needs.roam.result != 'skipped'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write               # separate job, so the agent never holds this token
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ux-roam
+          path: roam
+        continue-on-error: true
+
+      - name: Comment on the Weekly free-roam report issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create ux-roam --color 5319e7 --description "Weekly free-roam reports" 2>/dev/null || true
+          num=$(gh issue list --label ux-roam --state open --json number -q '.[0].number')
+          if [ -z "$num" ]; then
+            url=$(gh issue create --title "Weekly free-roam report" --label ux-roam \
+              --body "Once a week an agent uses Rothar however it likes and reports anything odd here. Nothing from here goes to the fixer: pick what deserves a line in EXPECTATIONS.md. Screenshots are attached to each run.")
+            num=${url##*/}
+          fi
+          {
+            echo "### $(date -u +'%a %-d %b %Y') · [run]($RUN_URL)"
+            echo
+            if [ -s roam/report.md ]; then cat roam/report.md; else echo "The roamer didn't write a report this week. Check the run."; fi
+          } > comment.md
+          gh issue comment "$num" --body-file comment.md
