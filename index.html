@@ -813,12 +813,12 @@ function valhallaType(t) {
 }
 
 function valhallaModifier(t) {
-  if ([2,9,17,23].includes(t)) return 'right';
-  if ([3,16,19,24].includes(t)) return 'left';
+  if ([2,10,17,23].includes(t)) return 'right';
+  if ([3,15,19,24].includes(t)) return 'left';
   if ([11].includes(t)) return 'sharp right';
   if ([14].includes(t)) return 'sharp left';
-  if ([10,18].includes(t)) return 'slight right';
-  if ([15].includes(t)) return 'slight left';
+  if ([9,18].includes(t)) return 'slight right';
+  if ([16].includes(t)) return 'slight left';
   return '';
 }
 
@@ -1612,7 +1612,8 @@ function nextStationStep() {
   for (let i = NAV.current; i < NAV.steps.length; i++) {
     const st = NAV.steps[i];
     if (st.legType === 'pickup' || st.legType === 'dropoff') return { type: st.legType, secs };
-    secs += st.duration || 0;
+    // Only the part of the current step still ahead of you, as the bottom bar counts it
+    secs += (st.duration || 0) * (i === NAV.current ? currentStepFraction() : 1);
   }
   return null;
 }
