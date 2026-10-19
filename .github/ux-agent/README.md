@@ -41,10 +41,16 @@ Where to look:
 
 Run them on your laptop: `npm install`, `npx playwright install chromium`, then `npm test` (fake London) or `npm run test:all`.
 
+## Weekly free roam
+
+Every Saturday morning a separate workflow (`weekly-roam.yml`) gives one Claude session the fake London harness and lets it use the app however it likes: odd tap sequences, strange searches, docks emptying at awkward moments. It writes its own small scripts in `ux-run/roam/`, runs them, looks at the screenshots and posts what it found to the **Weekly free-roam report** issue.
+
+It's report only. It can't change code, it doesn't open PRs and nothing it finds goes to the fixer. You decide which findings deserve a line in `EXPECTATIONS.md`; once they're there, the daily check tests them. To run it now: Actions → Weekly free roam → Run workflow.
+
 ## What it can't tell you
 
 Fake GPS is clean; real GPS jitters and drops out. The fake router makes simple L-shaped routes; real ones have many short steps. Nobody here has ridden the route. A `judge-pass` means "worth a real ride", not "safe without one", especially for anything touching navigation or the camera.
 
 ## Cost
 
-Three Claude sessions on days with a fix, one on days without. Rough guide: well under £1 on a quiet day, a few pounds on a day with a fix if you use an API key. With a subscription token it counts against your plan's usage instead. To pause it, disable the workflow in Actions.
+Three Claude sessions on days with a fix, one on days without, plus one longer session on Saturdays for the free roam. Rough guide: well under £1 on a quiet day, a few pounds on a day with a fix if you use an API key. With a subscription token it counts against your plan's usage instead. To pause it, disable the workflow in Actions.
