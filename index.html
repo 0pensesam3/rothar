@@ -233,6 +233,7 @@ body.navigating #nav-bottom { display: flex; }
 body.navigating #nav-view { display: block; }
 body.navigating .maplibregl-ctrl-bottom-right { bottom: 100px; }
 body.navigating .maplibregl-ctrl-top-left { display: none; }
+body.navigating #toast { top: auto; bottom: 100px; }   /* the turn card is at the top */
 #nav-station { margin-top: 8px; align-self: flex-start; max-width: 100%; display: none; align-items: center; gap: 8px; background: white; border-radius: 18px; padding: 6px 12px 6px 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.16); font-size: 13px; color: #111; pointer-events: auto; }
 .ns-count { border-radius: 16px; padding: 4px 10px; font-weight: 700; color: white; white-space: nowrap; font-size: 14px; }
 .ns-count.ok { background: #16a34a; } .ns-count.warn { background: #d97706; } .ns-count.bad { background: #dc2626; }
@@ -1689,6 +1690,7 @@ function resyncStep(lat, lon, force) {
 
 function onNavPosition(pos) {
   if (!NAV.active) return;
+  if (pos.coords.accuracy > 50) return;   // too vague to place you on the route; NAV.resync stays set for the next good fix
   const {latitude:lat, longitude:lon} = pos.coords;
   NAV.userLat = lat; NAV.userLon = lon;
   if (NAV.dispLat == null || NAV.resync) { NAV.dispLat = lat; NAV.dispLon = lon; }   // jump, don't glide across town
