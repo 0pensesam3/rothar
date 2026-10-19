@@ -46,6 +46,20 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **N10** Closing or reloading the app mid-trip offers to resume that trip. Resuming puts you back in navigation.
 - **N11** A walking-only trip navigates the same way, and its End button says "End walk".
 
+## Messy GPS
+
+Real phones jitter and drop out. These check the app copes with a bad fix as well as a clean one.
+
+- **G1** A position more than 50 m uncertain doesn't move you along the route or skip a step.
+- **G2** A single jump of 40 m that comes straight back doesn't change the step and doesn't count as going off route.
+- **G3** If GPS goes quiet for 20 seconds mid-trip, the app says it's lost your position. When it comes back, it carries on from the right step without restarting the trip.
+- **G4** A wrong compass reading only changes the "Right way / Turn around" hint, never the directions.
+
+## Off route
+
+- **O1** More than 40 m from the route for 15 seconds, the app says you're off route.
+- **O2** It then re-plans from where you are to the same dock or destination, and navigation carries on without a tap.
+
 ## Dock availability
 
 - **A1** During navigation, the live count at the dock you're heading to shows under the turn card.
@@ -59,6 +73,23 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **R1** If TfL station data can't load, the app says so and doesn't crash.
 - **R2** If routing is down, the app still plans with estimated distances and says they're estimated.
 - **R3** No uncaught JavaScript errors in any of the above.
+- **R4** If the main router takes more than 8 seconds or fails, the backup router plans the trip with real directions, not estimates.
+- **R5** If TfL station data takes more than 8 seconds, the app says it's still loading, then shows the R1 message if it fails. Never a blank map with no explanation.
+- **R6** While a plan is loading, the screen shows it's working, and Start can't be tapped on a half-built plan.
+
+## Awkward trips
+
+- **T1** If the destination is a docking station with a free space, you return the bike there and there's no walk at the end.
+- **T2** If there's no dock within 800 m of the start or destination, the app uses the nearest one further away and says how far the walk is.
+- **T3** With E-bike chosen and no e-bikes nearby, the app says so and offers Standard. It never quietly picks a standard bike.
+- **T4** Start and destination in the same place: the app says so and doesn't plan or error.
+
+## Impatient user
+
+- **U1** Tapping Start navigation twice quickly starts one trip: one Activity entry, one set of directions.
+- **U2** Planning a new trip while the last one is still loading only ever shows the newest plan.
+- **U3** If location is refused when you tap Start navigation, the app says navigation needs your location and stays on the plan.
+- **U4** Changing the destination mid-trip re-plans from where you are and carries on navigating. If you've already picked up a bike, the new plan keeps you on it.
 
 ## Privacy
 
@@ -70,3 +101,10 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **L1** On a 390 px wide phone screen nothing important is cut off, overlapping or unreadable: buttons, the turn card, the bottom bar, the popup.
 - **L2** Text on the turn card is readable at a glance: large manoeuvre, short road line, distance easy to find.
 - **L3** Colours stay consistent: red for cycling, purple for walking to and from docks, green for walking-only.
+- **L4** On a 375 × 667 screen (iPhone SE), nothing important is cut off or overlapping.
+- **L5** In landscape, the map, turn card and bottom bar all still fit on screen.
+- **L6** A very long road or station name wraps or shortens with "…" and never pushes a button off screen.
+
+## Free roam
+
+- **X1** Once a week an agent uses the app however it likes and reports anything that looks wrong. Its findings are never sent to the fixer. Anya decides which ones become lines here.
