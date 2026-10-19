@@ -39,6 +39,11 @@ The first line must be exactly one of:
 - `VERDICT: CONCERNS` (fixes the problem with nothing to reject in the code, but it touches riding behaviour that only a real ride can settle). Goes to Anya.
 - `VERDICT: PASS` (you looked hard for a reason to reject and found none).
 
+The next two lines are for Anya's notification, so keep each under 120 characters and in plain words:
+
+- `CHANGE: ` what the diff does to the app, as a rider would notice it. Example: `CHANGE: Right turns now show a right-turn arrow on the turn card and step list.`
+- `REASON: ` the main reason to reject, or `REASON: none found` on PASS. Example: `REASON: Arrow fixed on the turn card but the step list still shows ↗ for right turns.`
+
 Then:
 - **Reasons to reject**, each with its evidence (diff line, check name or screenshot). If there are none, say what you looked for and didn't find.
 - One line per ID: fixed or not, and how you know.

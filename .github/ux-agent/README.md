@@ -16,6 +16,7 @@ You approve by merging. Merging an agent PR starts the next check straight away.
 Where to look:
 - **Daily UX report** issue: one comment per run, written by the tester.
 - **PRs labelled `ux-agent`**: fixes. Each gets a judge comment and a `judge-pass`, `judge-concerns` or `judge-fail` label.
+- **Your GitHub notifications**: when a PR passes or gets CONCERNS, or all 3 attempts in a day fail, the workflow tags you in a short comment (what changed, which expectations it was for, what the judge rejected earlier that day) and requests your review. Turn on GitHub mobile push or email for mentions and review requests to get it on your phone.
 - **Actions → Daily UX check → a run → Artifacts**: screenshots and full results (`ux-tester`, `ux-judge`).
 
 ## One-time setup

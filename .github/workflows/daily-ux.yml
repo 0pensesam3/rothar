@@ -448,6 +448,62 @@ jobs:
             !ux-run/html/
           retention-days: 14
 
+      # Tell Anya when there's something for her: a PASS or CONCERNS, or the last attempt of the day failing.
+      # The judge is finished by now, so reading the tester's findings here doesn't affect its verdict.
+      - uses: actions/download-artifact@v4
+        if: steps.verdict.outputs.verdict != 'FAIL' || env.ROUND >= env.MAX_ROUNDS
+        with:
+          name: ux-tester
+          path: ${{ runner.temp }}/notify
+
+      - name: Notify Anya
+        if: steps.verdict.outputs.verdict != 'FAIL' || env.ROUND >= env.MAX_ROUNDS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ needs.fix.outputs.pr }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          VERDICT: ${{ steps.verdict.outputs.verdict }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          line() { sed -n "s/^$1: *//p" ux-run-judge/verdict.md | head -n1 | cut -c1-160; }
+          change=$(line CHANGE); [ -n "$change" ] || change=$(gh pr view "$PR" --repo "$REPO" --json title -q .title)
+          reason=$(line REASON)
+          stat=$(git diff --shortstat "origin/$BASE...HEAD" | sed 's/^ *//')
+          fixes=$(node -e "try{const f=require(process.argv[1]);console.log((f.fix_now||[]).map(x=>x.id+' '+x.title).join('; '))}catch(e){}" "$RUNNER_TEMP/notify/findings.json")
+
+          # Earlier attempts today that the judge rejected, one line each
+          today=$(date -u +%F)
+          rejected=$(gh pr list --repo "$REPO" --label judge-fail --state closed --search "closed:>=$today" --json number -q '.[].number' |
+            while read -r n; do
+              [ "$n" = "$PR" ] && continue
+              r=$(gh api "repos/$REPO/issues/$n/comments" --jq '[.[] | select(.body|startswith("## Judge"))][-1].body' | sed -n 's/^REASON: *//p' | head -n1 | cut -c1-160)
+              echo "- #$n: ${r:-see the judge comment}"
+            done)
+          attempts=$(( $(printf '%s\n' "$rejected" | grep -c '^-' || true) + 1 ))
+
+          case "$VERDICT" in
+            PASS)     head="✅ Judge passed this. Ready for you to merge." ;;
+            CONCERNS) head="🟡 Judge found nothing to reject, but wants a real ride before you merge." ;;
+            *)        head="❌ Judge rejected all $MAX_ROUNDS attempts today. Nothing to merge; tomorrow starts fresh." ;;
+          esac
+          {
+            echo "@$OWNER $head"
+            echo
+            echo "**Changed:** $change ($stat)"
+            [ -n "$fixes" ] && echo "**For:** $fixes"
+            [ "$VERDICT" = "FAIL" ] && echo "**Rejected:** $reason"
+            [ "$VERDICT" = "CONCERNS" ] && [ -n "$reason" ] && [ "$reason" != "none found" ] && echo "**Judge's worry:** $reason"
+            if [ -n "$rejected" ]; then echo; echo "**Rejected earlier today ($attempts attempts in all):**"; echo "$rejected"; fi
+            true
+          } > notify.md
+          cat notify.md
+          gh pr comment "$PR" --repo "$REPO" --body-file notify.md
+          # A review request puts it in your "Review requested" list as well as your notifications
+          if [ "$VERDICT" != "FAIL" ]; then
+            gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" -f "reviewers[]=$OWNER" >/dev/null || echo "Couldn't request a review; the mention still notifies."
+          fi
+
       # A FAIL closes this PR and sends the tester and fixer round again with the judge's reasons.
       - name: Rejected, go round again
         if: steps.verdict.outputs.verdict == 'FAIL'
