@@ -71,6 +71,7 @@ jobs:
           cat ux-run/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Tester agent
+        id: tester
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,6 +82,15 @@ jobs:
             --model claude-opus-5-5
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Write(ux-run/**)"
+
+      - name: Why the tester stopped
+        if: failure() && steps.tester.outcome == 'failure'
+        env:
+          OUT: ${{ steps.tester.outputs.execution_file }}
+        run: |
+          # Prints only Claude's error message, not the full transcript.
+          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
+          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
 
       - name: How many bugs to fix today
         id: pick
@@ -172,6 +182,7 @@ jobs:
           path: ux-run-tester
 
       - name: Fixer agent
+        id: fixer
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -184,6 +195,15 @@ jobs:
             --allowedTools "Read,Glob,Grep,Edit(index.html),Write(ux-run/**),Bash(npx playwright test:*)"
 
       # The fixer may change index.html and nothing else. Checked here, outside the agent.
+      - name: Why the fixer stopped
+        if: failure() && steps.fixer.outcome == 'failure'
+        env:
+          OUT: ${{ steps.fixer.outputs.execution_file }}
+        run: |
+          # Prints only Claude's error message, not the full transcript.
+          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
+          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+
       - name: Check which files the fixer changed
         id: guard
         run: |
@@ -268,6 +288,7 @@ jobs:
           cat ux-run/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Judge agent
+        id: judge
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -278,6 +299,15 @@ jobs:
             --model claude-opus-5-5
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Write(ux-run/verdict.md)"
+
+      - name: Why the judge stopped
+        if: failure() && steps.judge.outcome == 'failure'
+        env:
+          OUT: ${{ steps.judge.outputs.execution_file }}
+        run: |
+          # Prints only Claude's error message, not the full transcript.
+          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
+          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
 
       - name: Post the verdict on the PR
         env:
