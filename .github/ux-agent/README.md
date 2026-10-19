@@ -1,6 +1,6 @@
 # Daily UX check
 
-Every morning at about 06:00 (London, summer time) three separate Claude sessions check Rothar, fix what they can and wait for you.
+Every day around midday (12:12 London time in summer, 11:12 in winter) three separate Claude sessions check Rothar, fix what they can and wait for you.
 
 | Step | Who | Can change code? | Sees | Does well when |
 |---|---|---|---|---|
