@@ -1,18 +1,21 @@
 # Daily UX check: a tester, a fixer and a judge, each a separate Claude session.
 #
 #   1. Tester  runs the checks, looks at the screenshots, writes the day's report
-#              and picks at most two app bugs. Can't change code. Sees how its
-#              recent findings turned out (merged, closed, judge-fail).
-#   2. Fixer   changes index.html for those bugs only, and the workflow opens a PR.
-#              Skipped when an earlier fix PR is still open, or nothing was picked.
-#   3. Judge   two sessions. First it reads the diff cold, with nothing else on the
-#              machine. Then it gets the IDs it was meant to fix, the expectations and
-#              fresh check results, and looks for a reason to reject. Never sees the
-#              tester's or fixer's writing. Can't change code.
+#              and ranks up to three app bugs. Can't change code.
+#   2. Fixer   takes ONE bug at a time and changes index.html for it only. The workflow
+#              opens a draft PR for that bug alone.
+#   3. Judge   two sessions. First it reads the diff cold, with nothing else on the machine.
+#              Then it gets the bug's ID, the expectations and fresh check results, and
+#              looks for a reason to reject. Never sees the tester's or fixer's writing.
 #
-# On a judge FAIL the PR is closed and a new round starts with the judge's reasons,
-# up to MAX_ROUNDS a day. Nothing here merges. You approve by merging the PR;
-# merging one runs the check again. Setup steps are in .github/ux-agent/README.md.
+# After the judge:
+#   PASS or CONCERNS  the draft is marked ready and Anya is tagged. That's the only time she hears.
+#   FAIL              the fixer revises the SAME PR with the judge's reasons (it keeps what worked),
+#                     up to MAX_ATTEMPTS. Still failing: the PR is closed as parked and the
+#                     fixer starts on the tester's next bug. Nothing left: one message to Anya.
+#
+# Nothing here merges. Merging an agent PR runs the check again. If a run breaks, Anya is
+# tagged on the Daily UX report issue. Setup steps are in .github/ux-agent/README.md.
 
 name: Daily UX check
 
@@ -25,16 +28,29 @@ on:
         description: "Let the fixer open a PR if the tester finds something"
         type: boolean
         default: true
-      round:
-        description: "Attempt number today (set by the judge on a retry; leave as 1)"
+      # The rest are set by the workflow when it hands work to the next round. Leave them alone.
+      findings_run:
+        description: "(internal) Run whose tester findings to keep working on"
+        type: string
+        default: ""
+      bug:
+        description: "(internal) Which of the tester's picks to work on, from 0"
+        type: string
+        default: "0"
+      attempt:
+        description: "(internal) Attempt number on this bug"
         type: string
         default: "1"
+      pr:
+        description: "(internal) PR to revise"
+        type: string
+        default: ""
       retry_of:
-        description: "Run whose judge verdict this round answers (set by the judge; leave empty)"
+        description: "(internal) Run whose judge verdict this attempt answers"
         type: string
         default: ""
   pull_request:
-    types: [closed]             # a merged agent PR starts the next round straight away
+    types: [closed]             # a merged agent PR starts the next check straight away
 
 concurrency:
   group: daily-ux
@@ -46,23 +62,34 @@ permissions:
 env:
   CI: "1"
   REAL_TILES: "1"               # real map tiles in screenshots; the checks themselves use fake London
-  ROUND: ${{ inputs.round || '1' }}
+  MAX_ATTEMPTS: "3"             # attempts per bug before it's parked
+  FINDINGS_RUN: ${{ inputs.findings_run || github.run_id }}
+  CONTINUING: ${{ (inputs.findings_run || '') != '' }}
+  BUG: ${{ inputs.bug || '0' }}
+  ATTEMPT: ${{ inputs.attempt || '1' }}
+  PR_IN: ${{ inputs.pr || '' }}
   RETRY_OF: ${{ inputs.retry_of || '' }}
-  MAX_ROUNDS: "3"               # judge FAILs restart the loop at most this many attempts a day
+  BASE: ${{ github.event.repository.default_branch }}
+  REPO: ${{ github.repository }}
+  OWNER: ${{ github.repository_owner }}
+  RUN_ID: ${{ github.run_id }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
   test:
     name: "1 · Tester"
+    # Later rounds keep the morning's findings, so the tester runs once per check
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'ux-agent'))
+      (inputs.findings_run || '') == '' && (
+        github.event_name != 'pull_request' ||
+        (github.event.pull_request.merged && contains(github.event.pull_request.labels.*.name, 'ux-agent'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
       pull-requests: read
-      actions: read
     outputs:
       fix_count: ${{ steps.pick.outputs.fix_count }}
     steps:
@@ -91,28 +118,11 @@ jobs:
       - name: Tester's track record
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
         run: |
           gh pr list --repo "$REPO" --label ux-agent --state all --limit 10 \
             --json number,title,state,mergedAt,closedAt,labels \
-            -q '[.[] | {number, title, outcome: (if .mergedAt then "merged by Anya" elif (.labels|map(.name)|index("judge-fail")) then "rejected by the judge" elif .state=="CLOSED" then "closed by Anya without merging" else "waiting for Anya" end), labels: [.labels[].name]}]' \
+            -q '[.[] | {number, title, outcome: (if .mergedAt then "merged by Anya" elif (.labels|map(.name)|index("ux-parked")) then "parked: the judge rejected every attempt" elif .state=="CLOSED" then "closed by Anya without merging" else "waiting for Anya" end), labels: [.labels[].name]}]' \
             > ux-run/track-record.json || echo '[]' > ux-run/track-record.json
-
-      - name: Get the judge's reasons from the last round
-        if: env.RETRY_OF != ''
-        uses: actions/download-artifact@v4
-        with:
-          name: ux-judge
-          run-id: ${{ env.RETRY_OF }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: ${{ runner.temp }}/prev
-
-      - name: Keep only the verdict
-        if: env.RETRY_OF != ''
-        run: |
-          mkdir -p ux-run-prev
-          cp "$RUNNER_TEMP/prev/ux-run-judge/verdict.md" ux-run-prev/verdict.md
-          rm -rf "$RUNNER_TEMP/prev"
 
       - name: Tester agent
         id: tester
@@ -121,6 +131,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Read .github/ux-agent/tester.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
@@ -133,6 +144,7 @@ jobs:
           OUT: ${{ steps.tester.outputs.execution_file }}
         run: |
           # Prints only Claude's error message, not the full transcript.
+          [ -f "$OUT" ] || exit 0
           jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
           jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
 
@@ -147,7 +159,7 @@ jobs:
         id: pick
         if: always()
         run: |
-          n=$(node -e "try{const f=require('./ux-run/findings.json');console.log((f.fix_now||[]).length)}catch(e){console.log(0)}")
+          n=$(node -e "try{const f=require('./ux-run/findings.json');console.log(Math.min(3,(f.fix_now||[]).length))}catch(e){console.log(0)}")
           echo "fix_count=$n" >> "$GITHUB_OUTPUT"
           echo "Bugs picked for the fixer: $n"
 
@@ -155,7 +167,6 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           gh label create ux-report --color 0e8a16 --description "Daily UX check reports" 2>/dev/null || true
           num=$(gh issue list --label ux-report --state open --json number -q '.[0].number')
@@ -164,9 +175,8 @@ jobs:
               --body "The daily UX check posts one comment here per run. Screenshots and full results are attached to each run.")
             num=${url##*/}
           fi
-          retry=""; [ "$ROUND" != "1" ] && retry=" · attempt $ROUND of $MAX_ROUNDS, after a judge FAIL"
           {
-            echo "### $(date -u +'%a %-d %b %Y') · [run]($RUN_URL)$retry"
+            echo "### $(date -u +'%a %-d %b %Y') · [run]($RUN_URL)"
             echo
             if [ -f ux-run/report.md ]; then cat ux-run/report.md; else echo "The tester didn't write a report. Results summary:"; echo; cat ux-run/summary.md; fi
           } > comment.md
@@ -195,7 +205,6 @@ jobs:
       - id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
         run: |
           open=$(gh pr list --repo "$REPO" --label ux-agent --state open --json number -q '.[0].number')
           echo "waiting=$open" >> "$GITHUB_OUTPUT"
@@ -206,20 +215,30 @@ jobs:
   fix:
     name: "2 · Fixer"
     needs: [test, gate]
-    if: needs.gate.outputs.waiting == ''
+    # A fresh check with nothing waiting, or a later round handed on by the workflow itself
+    if: >-
+      !cancelled() && (
+        (needs.gate.result == 'success' && needs.gate.outputs.waiting == '') ||
+        (inputs.findings_run || '') != ''
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       contents: write
       pull-requests: write
-      actions: read
+      issues: write
+      actions: write              # to hand on to the next bug if this one can't be fixed
     outputs:
       pr: ${{ steps.pr.outputs.number }}
       branch: ${{ steps.pr.outputs.branch }}
+      bug_id: ${{ steps.bug.outputs.id }}
+      bug_title: ${{ steps.bug.outputs.title }}
+      bug_count: ${{ steps.bug.outputs.count }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -229,13 +248,52 @@ jobs:
       - name: Install
         run: npm ci && npx playwright install --with-deps chromium
 
-      - uses: actions/download-artifact@v4
+      - name: Get the tester's findings (this run)
+        if: env.CONTINUING != 'true'
+        uses: actions/download-artifact@v4
         with:
           name: ux-tester
           path: ux-run-tester
 
-      - name: Get the judge's reasons from the last round
-        if: env.RETRY_OF != ''
+      - name: Get the tester's findings (from the morning's run)
+        if: env.CONTINUING == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ux-tester
+          run-id: ${{ env.FINDINGS_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ux-run-tester
+
+      - name: Which bug this round is for
+        id: bug
+        run: |
+          node -e '
+            const fs = require("fs"), f = require("./ux-run-tester/findings.json");
+            const picks = (f.fix_now || []).slice(0, 3), b = picks[+process.env.BUG];
+            const out = (k, v) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${k}=${String(v).replace(/\s+/g, " ")}\n`);
+            out("count", picks.length);
+            if (!b) { console.log("No bug at position", process.env.BUG); process.exit(0); }
+            fs.writeFileSync("ux-run-tester/bug.json", JSON.stringify(b, null, 2));
+            out("id", b.id); out("title", b.title);
+            console.log(`Bug ${+process.env.BUG + 1} of ${picks.length}: ${b.id} ${b.title}, attempt ${process.env.ATTEMPT}`);
+          '
+
+      - name: Pick up the previous attempt
+        id: prev
+        if: steps.bug.outputs.id != '' && env.PR_IN != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch=$(gh api "repos/$REPO/pulls/$PR_IN" --jq .head.ref)
+          git fetch -q origin "$branch"
+          git checkout -q -B "$branch" "origin/$branch"
+          mkdir -p ux-run-prev
+          git diff "origin/$BASE...HEAD" > ux-run-prev/attempt.diff
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "Revising $branch (PR #$PR_IN):"; git diff --stat "origin/$BASE...HEAD"
+
+      - name: Get the judge's reasons from the last attempt
+        if: steps.bug.outputs.id != '' && env.RETRY_OF != ''
         uses: actions/download-artifact@v4
         with:
           name: ux-judge
@@ -244,7 +302,7 @@ jobs:
           path: ${{ runner.temp }}/prev
 
       - name: Keep only the verdict
-        if: env.RETRY_OF != ''
+        if: steps.bug.outputs.id != '' && env.RETRY_OF != ''
         run: |
           mkdir -p ux-run-prev
           cp "$RUNNER_TEMP/prev/ux-run-judge/verdict.md" ux-run-prev/verdict.md
@@ -252,11 +310,13 @@ jobs:
 
       - name: Fixer agent
         id: fixer
+        if: steps.bug.outputs.id != ''
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Read .github/ux-agent/fixer.md and do exactly what it says."
           claude_args: |
             --model claude-sonnet-5-5
@@ -269,12 +329,14 @@ jobs:
           OUT: ${{ steps.fixer.outputs.execution_file }}
         run: |
           # Prints only Claude's error message, not the full transcript.
+          [ -f "$OUT" ] || exit 0
           jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
           jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
 
       # The fixer may change index.html and nothing else. Checked here, outside the agent.
       - name: Check which files the fixer changed
         id: guard
+        if: steps.bug.outputs.id != ''
         run: |
           changed=$(git status --porcelain --untracked-files=all | sed 's/^...//' | sort -u)
           echo "Changed files:"; echo "${changed:-none}"
@@ -285,38 +347,73 @@ jobs:
           fi
           if [ -z "$changed" ]; then echo "has_change=" >> "$GITHUB_OUTPUT"; else echo "has_change=1" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Open the pull request
+      - name: Open or update the pull request
         id: pr
         if: steps.guard.outputs.has_change == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUG_ID: ${{ steps.bug.outputs.id }}
+          BUG_TITLE: ${{ steps.bug.outputs.title }}
         run: |
-          branch="ux-fix/$(date -u +%Y-%m-%d)-run${{ github.run_number }}"
           if [ -f ux-run/fix-notes.md ]; then
             title=$(head -n1 ux-run/fix-notes.md | sed 's/^#* *//' | cut -c1-80)
-            tail -n +2 ux-run/fix-notes.md > body.md
+            tail -n +2 ux-run/fix-notes.md > notes.md
           else
-            title="Fix from the daily UX check"; echo "The fixer left no notes." > body.md
+            title=""; echo "The fixer left no notes." > notes.md
           fi
-          [ -n "$title" ] || title="Fix from the daily UX check"
+          [ -n "$title" ] || title="Fix $BUG_ID: $BUG_TITLE"
           {
+            echo "**For:** $BUG_ID $BUG_TITLE"
+            echo
+            cat notes.md
             echo; echo "---"
-            echo "Opened by the daily UX check ([run]($RUN_URL)). The tester's report is in the Daily UX report issue."
-            [ "$ROUND" != "1" ] && echo "Attempt $ROUND of $MAX_ROUNDS today: the judge rejected the previous attempt ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/$RETRY_OF))."
-            echo "A separate judge agent reads the diff first, re-runs every check on this branch and posts its verdict below. It doesn't see this description."
+            echo "Opened by the daily UX check ([run]($RUN_URL)), attempt $ATTEMPT of $MAX_ATTEMPTS. The tester's report is in the Daily UX report issue."
+            echo "This stays a draft until a separate judge passes it. The judge reads the diff first and never sees this description."
             echo "Nothing merges automatically. Merging this starts the next check."
-          } >> body.md
+          } > body.md
           git config user.name "rothar-ux-agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
           git add index.html
-          git commit -m "$title" -m "From the daily UX check, run ${{ github.run_id }}, attempt $ROUND."
-          git push origin "$branch"
-          gh label create ux-agent --color 5319e7 --description "Opened by the daily UX agent" 2>/dev/null || true
-          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" --title "$title" --body-file body.md --label ux-agent
-          echo "number=$(gh pr view "$branch" --json number -q .number)" >> "$GITHUB_OUTPUT"
+          if [ -n "$PR_IN" ]; then
+            # Same PR, new commit: the judge's earlier comments stay on it, so you see the whole story
+            branch="${{ steps.prev.outputs.branch }}"
+            git commit -q -m "Attempt $ATTEMPT: $title" -m "Revised after the judge's FAIL. Daily UX check run $RUN_ID."
+            git push -q origin "$branch"
+            gh pr edit "$PR_IN" --repo "$REPO" --body-file body.md --remove-label judge-fail 2>/dev/null || gh pr edit "$PR_IN" --repo "$REPO" --body-file body.md
+            number=$PR_IN
+          else
+            branch="ux-fix/$(date -u +%Y-%m-%d)-$(echo "$BUG_ID" | tr 'A-Z' 'a-z')-run${{ github.run_number }}"
+            git checkout -q -b "$branch"
+            git commit -q -m "$title" -m "From the daily UX check, run $RUN_ID. For $BUG_ID."
+            git push -q origin "$branch"
+            gh label create ux-agent --color 5319e7 --description "Opened by the daily UX agent" 2>/dev/null || true
+            # A draft, so GitHub doesn't ask you (as code owner) to review until the judge passes it
+            gh pr create --draft --base "$BASE" --head "$branch" --title "$title" --body-file body.md --label ux-agent
+            number=$(gh pr view "$branch" --json number -q .number)
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      # The fixer made no change: park this bug and move on, rather than stopping the day
+      - name: Fixer couldn't fix it, move on
+        if: steps.bug.outputs.id != '' && steps.guard.outputs.has_change == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ env.PR_IN }}
+          BUG_COUNT: ${{ steps.bug.outputs.count }}
+          BUG_ID: ${{ steps.bug.outputs.id }}
+        run: |
+          why="The fixer couldn't find a change for $BUG_ID on attempt $ATTEMPT."
+          [ -f ux-run/fix-notes.md ] && why="$why Its notes: $(tail -n +2 ux-run/fix-notes.md | tr '\n' ' ' | cut -c1-300)"
+          if [ -n "$PR" ]; then
+            gh label create ux-parked --color 6e7781 --description "The judge rejected every attempt; left for later" 2>/dev/null || true
+            gh pr edit "$PR" --repo "$REPO" --add-label ux-parked
+            gh pr close "$PR" --repo "$REPO" --delete-branch --comment "Parked. $why"
+          else
+            issue=$(gh issue list --repo "$REPO" --label ux-report --state open --json number -q '.[0].number')
+            [ -n "$issue" ] && gh issue comment "$issue" --repo "$REPO" --body "$why Moving on. ([run]($RUN_URL))"
+          fi
+          bash .github/ux-agent/next-round.sh next-bug
 
   judge:
     name: "3 · Judge"
@@ -325,9 +422,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
-      contents: write             # to delete the branch of a rejected fix
+      contents: write             # to delete the branch of a parked fix
       pull-requests: write
-      actions: write              # to start the next round after a FAIL
+      issues: write
+      actions: write              # to start the next attempt or the next bug
+    env:
+      PR: ${{ needs.fix.outputs.pr }}
+      BUG_ID: ${{ needs.fix.outputs.bug_id }}
+      BUG_TITLE: ${{ needs.fix.outputs.bug_title }}
+      BUG_COUNT: ${{ needs.fix.outputs.bug_count }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -335,12 +438,13 @@ jobs:
           fetch-depth: 0
 
       # Step A: the diff and nothing else. No tester output, no fixer notes, no test results
-      # exist on this machine yet, so the first read can't lean on them.
+      # exist on this machine yet, so the first read can't lean on them. On a revision the
+      # diff is the whole branch against main, so the judge always sees the change as it stands.
       - name: Save the diff
         run: |
           mkdir -p ux-run-judge
-          git diff "origin/${{ github.event.repository.default_branch }}...HEAD" > ux-run-judge/fix.diff
-          echo "Files in the diff:"; git diff --name-only "origin/${{ github.event.repository.default_branch }}...HEAD"
+          git diff "origin/$BASE...HEAD" > ux-run-judge/fix.diff
+          echo "Files in the diff:"; git diff --name-only "origin/$BASE...HEAD"
 
       - name: Judge reads the diff cold
         id: first_read
@@ -349,6 +453,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Read .github/ux-agent/judge-first-read.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
@@ -359,7 +464,7 @@ jobs:
         run: |
           [ -s ux-run-judge/first-read.md ] || { echo "::error::The judge didn't write ux-run-judge/first-read.md."; exit 1; }
 
-      # Step B: now the evidence. Only machine output from the tester's run, plus the IDs.
+      # Step B: now the evidence. Only machine output from the tester's run, plus the ID.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -368,20 +473,30 @@ jobs:
       - name: Install
         run: npm ci && npx playwright install --with-deps chromium
 
-      - uses: actions/download-artifact@v4
+      - name: Get the tester's results (this run)
+        if: env.CONTINUING != 'true'
+        uses: actions/download-artifact@v4
         with:
           name: ux-tester
           path: ${{ runner.temp }}/tester
 
-      - name: Keep only check results and the IDs to fix
+      - name: Get the tester's results (from the morning's run)
+        if: env.CONTINUING == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ux-tester
+          run-id: ${{ env.FINDINGS_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/tester
+
+      - name: Keep only check results and the ID to fix
         run: |
           mkdir -p ux-run-before
           for f in summary.md results.json screens test-output; do
             if [ -e "$RUNNER_TEMP/tester/$f" ]; then cp -r "$RUNNER_TEMP/tester/$f" ux-run-before/; fi
           done
-          node -e "const f=require(process.argv[1]);console.log((f.fix_now||[]).map(x=>x.id).join('\n'))" \
-            "$RUNNER_TEMP/tester/findings.json" > ux-run-before/fix-ids.txt
-          echo "IDs to judge:"; cat ux-run-before/fix-ids.txt
+          echo "$BUG_ID" > ux-run-before/fix-ids.txt
+          echo "ID to judge: $BUG_ID"
           rm -rf "$RUNNER_TEMP/tester"     # the tester's report and findings never reach the judge
 
       - name: Run every check on the fix branch
@@ -400,6 +515,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: "Read .github/ux-agent/judge.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
@@ -412,6 +528,7 @@ jobs:
           OUT: ${{ steps.judge.outputs.execution_file || steps.first_read.outputs.execution_file }}
         run: |
           # Prints only Claude's error message, not the full transcript.
+          [ -f "$OUT" ] || exit 0
           jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
           jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
 
@@ -419,24 +536,24 @@ jobs:
         id: verdict
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ needs.fix.outputs.pr }}
         run: |
-          if [ ! -f ux-run-judge/verdict.md ]; then echo "VERDICT: CONCERNS" > ux-run-judge/verdict.md; echo; echo "The judge didn't write a verdict. Treat this PR as unreviewed." >> ux-run-judge/verdict.md; fi
+          if [ ! -f ux-run-judge/verdict.md ]; then printf 'VERDICT: CONCERNS\n\nThe judge did not write a verdict. Treat this PR as unreviewed.\n' > ux-run-judge/verdict.md; fi
           verdict=$(head -n1 ux-run-judge/verdict.md | sed -n 's/^VERDICT: *\([A-Z]*\).*/\1/p')
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           {
-            echo "## Judge"; echo; cat ux-run-judge/verdict.md; echo
+            echo "## Judge · attempt $ATTEMPT of $MAX_ATTEMPTS"; echo; cat ux-run-judge/verdict.md; echo
             echo "<details><summary>The judge's cold read of the diff (written before it saw anything else)</summary>"; echo; cat ux-run-judge/first-read.md; echo "</details>"
             echo "<details><summary>Check results on this branch</summary>"; echo; cat ux-run/summary.md; echo "</details>"
           } > comment.md
-          gh pr comment "$PR" --body-file comment.md
+          gh pr comment "$PR" --repo "$REPO" --body-file comment.md
           case "$verdict" in
             PASS) label=judge-pass; colour=0e8a16 ;;
             FAIL) label=judge-fail; colour=b60205 ;;
             *)    label=judge-concerns; colour=fbca04 ;;
           esac
           gh label create "$label" --color "$colour" 2>/dev/null || true
-          gh pr edit "$PR" --add-label "$label"
+          for old in judge-pass judge-fail judge-concerns; do gh pr edit "$PR" --repo "$REPO" --remove-label "$old" >/dev/null 2>&1 || true; done
+          gh pr edit "$PR" --repo "$REPO" --add-label "$label"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -448,78 +565,72 @@ jobs:
             !ux-run/html/
           retention-days: 14
 
-      # Tell Anya when there's something for her: a PASS or CONCERNS, or the last attempt of the day failing.
-      # The judge is finished by now, so reading the tester's findings here doesn't affect its verdict.
-      - uses: actions/download-artifact@v4
-        if: steps.verdict.outputs.verdict != 'FAIL' || env.ROUND >= env.MAX_ROUNDS
-        with:
-          name: ux-tester
-          path: ${{ runner.temp }}/notify
-
-      - name: Notify Anya
-        if: steps.verdict.outputs.verdict != 'FAIL' || env.ROUND >= env.MAX_ROUNDS
+      # PASS or CONCERNS: ready for review, and tell Anya. This is the only time she's pinged about a fix.
+      - name: Ready for you
+        if: steps.verdict.outputs.verdict != 'FAIL'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ needs.fix.outputs.pr }}
-          REPO: ${{ github.repository }}
-          OWNER: ${{ github.repository_owner }}
           VERDICT: ${{ steps.verdict.outputs.verdict }}
-          BASE: ${{ github.event.repository.default_branch }}
         run: |
           line() { sed -n "s/^$1: *//p" ux-run-judge/verdict.md | head -n1 | cut -c1-160; }
           change=$(line CHANGE); [ -n "$change" ] || change=$(gh pr view "$PR" --repo "$REPO" --json title -q .title)
           reason=$(line REASON)
           stat=$(git diff --shortstat "origin/$BASE...HEAD" | sed 's/^ *//')
-          fixes=$(node -e "try{const f=require(process.argv[1]);console.log((f.fix_now||[]).map(x=>x.id+' '+x.title).join('; '))}catch(e){}" "$RUNNER_TEMP/notify/findings.json")
-
-          # Earlier attempts today that the judge rejected, one line each
-          today=$(date -u +%F)
-          rejected=$(gh pr list --repo "$REPO" --label judge-fail --state closed --search "closed:>=$today" --json number -q '.[].number' |
-            while read -r n; do
-              [ "$n" = "$PR" ] && continue
-              r=$(gh api "repos/$REPO/issues/$n/comments" --jq '[.[] | select(.body|startswith("## Judge"))][-1].body' | sed -n 's/^REASON: *//p' | head -n1 | cut -c1-160)
-              echo "- #$n: ${r:-see the judge comment}"
-            done)
-          attempts=$(( $(printf '%s\n' "$rejected" | grep -c '^-' || true) + 1 ))
-
+          # Earlier attempts on this PR: every judge comment except the one just posted
+          earlier=$(gh api "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.body|startswith("## Judge"))] | .[:-1][] | .body' |
+                    awk '/^## Judge/{n++} /^REASON:/{sub(/^REASON: */,""); printf "- Attempt %d: %s\n", n, substr($0,1,160)}')
+          # Other bugs parked today
+          parked=$(gh pr list --repo "$REPO" --label ux-parked --state closed --search "closed:>=$(date -u +%F)" --json number,title -q '.[] | "- #\(.number) \(.title)"')
           case "$VERDICT" in
-            PASS)     head="✅ Judge passed this. Ready for you to merge." ;;
-            CONCERNS) head="🟡 Judge found nothing to reject, but wants a real ride before you merge." ;;
-            *)        head="❌ Judge rejected all $MAX_ROUNDS attempts today. Nothing to merge; tomorrow starts fresh." ;;
+            PASS) head="✅ Judge passed this. Ready for you to merge." ;;
+            *)    head="🟡 Judge found nothing to reject, but wants a real ride before you merge." ;;
           esac
           {
             echo "@$OWNER $head"
             echo
             echo "**Changed:** $change ($stat)"
-            [ -n "$fixes" ] && echo "**For:** $fixes"
-            [ "$VERDICT" = "FAIL" ] && echo "**Rejected:** $reason"
+            echo "**For:** $BUG_ID $BUG_TITLE"
             [ "$VERDICT" = "CONCERNS" ] && [ -n "$reason" ] && [ "$reason" != "none found" ] && echo "**Judge's worry:** $reason"
-            if [ -n "$rejected" ]; then echo; echo "**Rejected earlier today ($attempts attempts in all):**"; echo "$rejected"; fi
+            if [ -n "$earlier" ]; then echo; echo "**Rejected on the way here:**"; echo "$earlier"; fi
+            if [ -n "$parked" ]; then echo; echo "**Parked today (judge rejected every attempt):**"; echo "$parked"; fi
             true
           } > notify.md
           cat notify.md
+          gh pr ready "$PR" --repo "$REPO"
           gh pr comment "$PR" --repo "$REPO" --body-file notify.md
-          # A review request puts it in your "Review requested" list as well as your notifications
-          if [ "$VERDICT" != "FAIL" ]; then
-            gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" -f "reviewers[]=$OWNER" >/dev/null || echo "Couldn't request a review; the mention still notifies."
-          fi
+          gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" -f "reviewers[]=$OWNER" >/dev/null 2>&1 || true
 
-      # A FAIL closes this PR and sends the tester and fixer round again with the judge's reasons.
-      - name: Rejected, go round again
+      # FAIL: revise the same PR with the judge's reasons, or park it and move to the next bug
+      - name: Rejected, revise or move on
         if: steps.verdict.outputs.verdict == 'FAIL'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ needs.fix.outputs.pr }}
-          BRANCH: ${{ needs.fix.outputs.branch }}
-          REPO: ${{ github.repository }}
+          BUG: ${{ env.BUG }}
         run: |
-          if [ "$ROUND" -lt "$MAX_ROUNDS" ]; then
-            next=$((ROUND + 1))
-            gh pr close "$PR" --repo "$REPO" --delete-branch \
-              --comment "Closed by the judge's FAIL. Attempt $next of $MAX_ROUNDS is starting now: the tester re-checks and the fixer tries again, both with the reasons above."
-            gh workflow run daily-ux.yml --repo "$REPO" --ref "${{ github.event.repository.default_branch }}" \
-              -f fix=true -f round="$next" -f retry_of="${{ github.run_id }}"
+          if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+            gh pr comment "$PR" --repo "$REPO" --body "Attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS is starting: the fixer revises this PR with the reasons above, keeping what the judge said works."
+            bash .github/ux-agent/next-round.sh retry
           else
+            gh label create ux-parked --color 6e7781 --description "The judge rejected every attempt; left for later" 2>/dev/null || true
+            gh pr edit "$PR" --repo "$REPO" --add-label ux-parked
             gh pr close "$PR" --repo "$REPO" --delete-branch \
-              --comment "Closed by the judge's FAIL. That was attempt $ROUND of $MAX_ROUNDS, so no more tries today. Tomorrow's check starts fresh; the problem stays in the Daily UX report."
+              --comment "Parked after $MAX_ATTEMPTS attempts. The bug stays in the Daily UX report for another day. Moving on to the tester's next pick, if there is one."
+            bash .github/ux-agent/next-round.sh next-bug
           fi
+
+  # If any step breaks, tag Anya once on the report issue, so a stuck run doesn't go unnoticed
+  alert:
+    name: "Tell Anya if a run broke"
+    needs: [test, gate, fix, judge]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESULTS: "Tester ${{ needs.test.result }}, fixer ${{ needs.fix.result }}, judge ${{ needs.judge.result }}"
+        run: |
+          issue=$(gh issue list --repo "$REPO" --label ux-report --state open --json number -q '.[0].number')
+          [ -n "$issue" ] || exit 0
+          gh issue comment "$issue" --repo "$REPO" --body "@$OWNER ⚠️ Today's check stopped with an error, so nothing more will happen until the next run or until you re-run it. $RESULTS. [Open the run]($RUN_URL) and look at the red step; its \"Why … stopped\" step says what the agent hit."
