@@ -21,7 +21,7 @@ name: Daily UX check
 
 on:
   schedule:
-    - cron: "12 5 * * *"        # 05:12 UTC: 06:12 in summer, 05:12 in winter (London)
+    - cron: "12 11 * * *"       # 11:12 UTC: 12:12 in summer, 11:12 in winter (London)
   workflow_dispatch:
     inputs:
       fix:
