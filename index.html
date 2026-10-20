@@ -1646,7 +1646,7 @@ async function doProximityRefresh() {
   const countOf  = st => isPickup ? usableBikes(st) : prop(st,'NbEmptyDocks');
 
   const fresh = await refreshOneStation(isPickup ? S.pickup : S.dropoff);
-  if (!fresh) return;
+  if (!fresh || NAV.proximityFor !== (isPickup ? 'pickup' : 'dropoff')) return;   // watch stopped while fetching
   if (isPickup) S.pickup = fresh; else S.dropoff = fresh;
   const count = countOf(fresh);
   renderNavStation();
@@ -1729,7 +1729,9 @@ function onNavPosition(pos) {
 
   // Watch the next station once we're ~5 min from it
   const nxt = nextStationStep();
-  if (!nxt) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
+  // Stop when none is left, or once we've ridden off from the pick-up dock and the return dock is still far off
+  const leftPickup = NAV.proximityFor === 'pickup' && nxt && nxt.type !== 'pickup' && nxt.secs > PROXIMITY_SECS && haversine(lat, lon, S.pickup.lat, S.pickup.lon) > 100;
+  if (!nxt || leftPickup) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
   else if (nxt.secs <= PROXIMITY_SECS && NAV.proximityFor !== nxt.type) startProximityRefresh(nxt.type);
 
   updateNavCard();
