@@ -124,8 +124,11 @@ jobs:
             -q '[.[] | {number, title, outcome: (if .mergedAt then "merged by Anya" elif (.labels|map(.name)|index("ux-parked")) then "parked: the judge rejected every attempt" elif .state=="CLOSED" then "closed by Anya without merging" else "waiting for Anya" end), labels: [.labels[].name]}]' \
             > ux-run/track-record.json || echo '[]' > ux-run/track-record.json
 
+      # continue-on-error: a turn overrun shouldn't kill a run whose report is already written.
+      # The next step decides whether the failure was real.
       - name: Tester agent
         id: tester
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -135,21 +138,16 @@ jobs:
           prompt: "Read .github/ux-agent/tester.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 40
+            --max-turns 60
             --allowedTools "Read,Glob,Grep,Edit(ux-run/**)"
 
       - name: Why the tester stopped
-        if: failure() && steps.tester.outcome == 'failure'
+        if: steps.tester.outcome == 'failure'
         env:
           OUT: ${{ steps.tester.outputs.execution_file }}
-        run: |
-          # Prints only Claude's error message, not the full transcript.
-          [ -f "$OUT" ] || exit 0
-          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
-          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+        run: bash .github/ux-agent/agent-stopped.sh tester "$OUT"
 
       - name: Did the tester write its report?
-        if: steps.tester.outcome == 'success'
         run: |
           for f in ux-run/report.md ux-run/findings.json; do
             [ -s "$f" ] || { echo "::error::The tester finished but didn't write $f. Check its tool permissions."; exit 1; }
@@ -311,6 +309,7 @@ jobs:
       - name: Fixer agent
         id: fixer
         if: steps.bug.outputs.id != ''
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -320,18 +319,15 @@ jobs:
           prompt: "Read .github/ux-agent/fixer.md and do exactly what it says."
           claude_args: |
             --model claude-sonnet-5-5
-            --max-turns 60
+            --max-turns 80
             --allowedTools "Read,Glob,Grep,Edit(index.html),Edit(ux-run/**),Bash(npx playwright test:*)"
 
+      # A turn overrun carries on: the guard below and the judge decide whether the change is any good
       - name: Why the fixer stopped
-        if: failure() && steps.fixer.outcome == 'failure'
+        if: steps.fixer.outcome == 'failure'
         env:
           OUT: ${{ steps.fixer.outputs.execution_file }}
-        run: |
-          # Prints only Claude's error message, not the full transcript.
-          [ -f "$OUT" ] || exit 0
-          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
-          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+        run: bash .github/ux-agent/agent-stopped.sh fixer "$OUT"
 
       # The fixer may change index.html and nothing else. Checked here, outside the agent.
       - name: Check which files the fixer changed
@@ -448,6 +444,7 @@ jobs:
 
       - name: Judge reads the diff cold
         id: first_read
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -457,8 +454,14 @@ jobs:
           prompt: "Read .github/ux-agent/judge-first-read.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 25
+            --max-turns 35
             --allowedTools "Read,Glob,Grep,Edit(ux-run-judge/first-read.md)"
+
+      - name: Why the judge stopped (cold read)
+        if: steps.first_read.outcome == 'failure'
+        env:
+          OUT: ${{ steps.first_read.outputs.execution_file }}
+        run: bash .github/ux-agent/agent-stopped.sh "judge (cold read)" "$OUT"
 
       - name: Did the judge write its first read?
         run: |
@@ -510,6 +513,7 @@ jobs:
 
       - name: Judge agent
         id: judge
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -519,18 +523,15 @@ jobs:
           prompt: "Read .github/ux-agent/judge.md and do exactly what it says."
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 40
+            --max-turns 55
             --allowedTools "Read,Glob,Grep,Edit(ux-run-judge/verdict.md)"
 
+      # A turn overrun carries on: no verdict file means the next step posts CONCERNS, never a pass
       - name: Why the judge stopped
-        if: failure() && (steps.judge.outcome == 'failure' || steps.first_read.outcome == 'failure')
+        if: steps.judge.outcome == 'failure'
         env:
-          OUT: ${{ steps.judge.outputs.execution_file || steps.first_read.outputs.execution_file }}
-        run: |
-          # Prints only Claude's error message, not the full transcript.
-          [ -f "$OUT" ] || exit 0
-          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
-          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+          OUT: ${{ steps.judge.outputs.execution_file }}
+        run: bash .github/ux-agent/agent-stopped.sh judge "$OUT"
 
       - name: Post the verdict on the PR
         id: verdict
