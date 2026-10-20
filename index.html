@@ -1689,6 +1689,7 @@ function resyncStep(lat, lon, force) {
 
 function onNavPosition(pos) {
   if (!NAV.active) return;
+  if (pos.coords.accuracy > 50) return;   // too vague to place you: wait for a better fix rather than skip steps
   const {latitude:lat, longitude:lon} = pos.coords;
   NAV.userLat = lat; NAV.userLon = lon;
   if (NAV.dispLat == null || NAV.resync) { NAV.dispLat = lat; NAV.dispLon = lon; }   // jump, don't glide across town
