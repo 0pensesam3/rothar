@@ -39,6 +39,7 @@ jobs:
 
       - name: Roamer agent
         id: roamer
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -51,13 +52,10 @@ jobs:
             --allowedTools "Read,Glob,Grep,Edit(ux-run/roam/**),Bash(npx playwright test --config tests/roam.config.ts:*)"
 
       - name: Why the roamer stopped
-        if: failure() && steps.roamer.outcome == 'failure'
+        if: steps.roamer.outcome == 'failure'
         env:
           OUT: ${{ steps.roamer.outputs.execution_file }}
-        run: |
-          # Prints only Claude's error message, not the full transcript.
-          jq -r '.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$OUT" | tail -c 1500
-          jq -r '.[] | select(.type=="result") | (.result // .errors // empty) | tostring' "$OUT" | tail -c 1500
+        run: bash .github/ux-agent/agent-stopped.sh roamer "$OUT"
 
       - uses: actions/upload-artifact@v4
         if: always()
