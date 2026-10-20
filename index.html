@@ -1729,7 +1729,8 @@ function onNavPosition(pos) {
 
   // Watch the next station once we're ~5 min from it
   const nxt = nextStationStep();
-  if (!nxt) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
+  // Stop when none is left, or when the one being watched is behind us and the next is still far off
+  if (!nxt || (nxt.secs > PROXIMITY_SECS && NAV.proximityFor && NAV.proximityFor !== nxt.type)) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
   else if (nxt.secs <= PROXIMITY_SECS && NAV.proximityFor !== nxt.type) startProximityRefresh(nxt.type);
 
   updateNavCard();
