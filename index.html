@@ -422,7 +422,8 @@ body.navigating #avail-popup { max-height: calc(100% - 112px - env(safe-area-ins
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
-      Rothar counts anonymous app usage (for example "navigation started") to improve the app. No locations, addresses, searches or personal data are collected.</div>
+      Rothar counts anonymous app usage (for example "navigation started") to improve the app. No locations, addresses, searches or personal data are collected.<br><br>
+      Found a bug or want something? <a id="feedback-link" href="https://docs.google.com/forms/d/e/1FAIpQLSd_9dmIi4FeU2tcxAQ_sCv_qq8cW2VaE7Cm60lzL8frZw6Qfw/viewform" target="_blank" rel="noopener" style="color:#e31837;">Tell me</a>.</div>
     <div id="history-list"></div>
   </div>
 
@@ -2340,6 +2341,7 @@ document.getElementById('nav-stop').addEventListener('click', onEndTap);
 document.getElementById('nav-view').addEventListener('click', toggleNavView);
 document.getElementById('history-btn').addEventListener('click', () => { track('activity-opened', 'Activity opened'); renderHistory(); document.getElementById('history-panel').classList.add('visible'); });
 document.getElementById('history-close').addEventListener('click', () => document.getElementById('history-panel').classList.remove('visible'));
+document.getElementById('feedback-link').addEventListener('click', () => track('feedback-clicked', 'Feedback clicked'));
 
 // Bike type filter
 document.querySelectorAll('#filter-row .pill-btn').forEach(btn => btn.addEventListener('click', () => {
