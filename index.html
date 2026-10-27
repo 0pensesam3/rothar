@@ -282,6 +282,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
 #start-nav-btn.walk { background: #16a34a; }
 #journey-summary { padding: 6px 14px 10px; background: white; border-bottom: 1px solid #f0f0ee; position: sticky; top: 0; }
 .sum-tag    { display: inline-block; font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 12px; padding: 3px 10px; margin-bottom: 4px; }
+.sum-tag.warn { color: #92400e; background: #fef3c7; }
 .sum-main   { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .sum-total  { font-size: 24px; font-weight: 700; color: #111; }
 .sum-arrive { font-size: 16px; font-weight: 600; color: #374151; }
@@ -447,6 +448,7 @@ const DOCK_OVERHEAD  = 90;    // s — releasing a bike at the dock plus docking
 const DETOUR         = 1.3;   // straight-line → street distance, for estimates only
 const PROXIMITY_SECS = 300;   // s — start watching a station when this close to it
 const PROXIMITY_EVERY = 15;   // s — how often to re-check it in that window
+const PICKUP_SPARE_WALK = 3;  // min — extra walk worth it to reach a dock with 2+ of your bike type
 const RESUME_MAX_AGE = 3 * 3600 * 1000;   // ms — offer to resume a trip for this long after it was last seen
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -977,7 +979,10 @@ async function planJourney(silent=false) {
   }, null)?.s;
   if (!seedDrop) { toast('⚠ No docking spaces near destination.',4000); return; }
 
-  const {station:pickup, dist:wiDist} = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon);
+  // A dock with 2+ of your bike type beats one with a single bike, if it's a similar walk away (P9)
+  const nearest = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon);
+  const roomy   = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon, null, LOW_AVAIL);
+  const {station:pickup, dist:wiDist} = roomy.station && (roomy.dist - nearest.dist) / WALK_SPD <= PICKUP_SPARE_WALK ? roomy : nearest;
   if (!pickup) { toast(`⚠ No ${S.bikeFilter==='any'?'':S.bikeFilter+' '}bikes nearby.`,4000); return; }
 
   const {station:dropoff, dist:woDist} = bestDropoff(pickup.lat,pickup.lon, S.end.lat,S.end.lon);
@@ -1051,10 +1056,12 @@ function buildStepRows(route) {
 
 function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   const total = (walkIn?.duration||0)+(cycle?.duration||0)+(walkOut?.duration||0)+DOCK_OVERHEAD;
+  const have = usableBikes(pickup);
+  const lowTag = have < LOW_AVAIL ? `<div class="sum-tag warn">⚠ Only ${have} ${bikeNoun(have)} at ${esc(pickup.commonName)} right now</div>` : '';
   const cDist = cycle ? fmtDist(cycle.distance) : fmtDist(haversine(pickup.lat,pickup.lon,dropoff.lat,dropoff.lon));
   const empty = prop(dropoff,'NbEmptyDocks');
   const legWalk = (r, d) => r ? `${fmtTime(r.duration)} walk` : `${fmtDist(d)} walk`;
-  document.getElementById('journey-summary').innerHTML = `
+  document.getElementById('journey-summary').innerHTML = `${lowTag}
     <div class="sum-main"><span class="sum-total">${fmtTime(total)}</span><span class="sum-arrive">Arrive ${clock(Date.now() + total*1000)}</span></div>
     <div class="sum-legs">🚶 ${legWalk(walkIn, wiDist)} · 🚲 ${cycle ? fmtTime(cycle.duration) + ' cycle' : 'cycle'} (${cDist}) · 🚶 ${legWalk(walkOut, woDist)}</div>`;
   let steps = '';
@@ -1111,17 +1118,17 @@ function estimateLikelihood(station, type) {
 function showAvailAlert(station, type) {
   const docks = prop(station,'NbEmptyDocks');
   const count = type === 'bike' ? usableBikes(station) : docks;
-  const thing = type === 'bike' ? 'bike' : 'dock';
   const lh = estimateLikelihood(station, type);
 
   const isPickup = type === 'bike';
   const emoji = isPickup ? '🚲' : '🅿';
+  const one = isPickup ? bikeNoun(1) : 'dock', many = isPickup ? bikeNoun(2) : 'docks';
   document.getElementById('avail-popup-title').textContent =
-    count === 0 ? `${emoji} No ${thing}s available` : `${emoji} Only ${count} ${thing}${count!==1?'s':''} left`;
+    count === 0 ? `${emoji} No ${many} available` : `${emoji} Only ${count} ${count === 1 ? one : many} left`;
   document.getElementById('avail-popup-body').textContent =
     count === 0
-      ? `${isPickup?'Pick-up':'Return'} station ${station.commonName} has no ${thing}s right now.`
-      : `${isPickup?'Pick-up':'Return'} station ${station.commonName} is very low on ${thing}s.`;
+      ? `${isPickup?'Pick-up':'Return'} station ${station.commonName} has no ${many} right now.`
+      : `${isPickup?'Pick-up':'Return'} station ${station.commonName} is very low on ${many}.`;
   document.getElementById('avail-popup-likelihood').innerHTML =
     `<span style="color:${lh.color};font-weight:500;">📊 ${lh.text}</span><br><span style="color:#6b7280;">Estimated wait if you stay: ${lh.wait}</span>`;
 
@@ -1420,8 +1427,7 @@ function renderNavStation() {
   if (!st) { el.style.display = 'none'; return; }
   const isP = nxt.type === 'pickup';
   const n = isP ? usableBikes(st) : prop(st, 'NbEmptyDocks');
-  const noun = isP ? (S.bikeFilter === 'ebike' ? 'e-bike' : S.bikeFilter === 'standard' ? 'standard bike' : 'bike') : 'dock';
-  const what = `${noun}${n === 1 ? '' : 's'}${isP ? '' : ' free'}`;
+  const what = isP ? bikeNoun(n) : `dock${n === 1 ? '' : 's'} free`;
   const eb = isP && S.bikeFilter === 'any' && prop(st, 'NbEBikes') > 0 ? ` (⚡${prop(st, 'NbEBikes')})` : '';
   const cls = n === 0 ? 'bad' : n <= LOW_AVAIL ? 'warn' : 'ok';
   const ageS = S.lastRefresh ? (Date.now() - S.lastRefresh) / 1000 : null;
@@ -1600,6 +1606,12 @@ function syncJourneyStations() {
   if (S.dropoff) S.dropoff = S.stations.find(s => s.id === S.dropoff.id) || S.dropoff;
 }
 
+// "e-bike" / "standard bikes" / "bike", for the bike type you chose
+function bikeNoun(n) {
+  const w = S.bikeFilter === 'ebike' ? 'e-bike' : S.bikeFilter === 'standard' ? 'standard bike' : 'bike';
+  return n === 1 ? w : w + 's';
+}
+
 // Bikes that count for the current filter
 function usableBikes(st) {
   const bikes = prop(st,'NbBikes'), ebikes = prop(st,'NbEBikes');
@@ -1648,7 +1660,9 @@ function setHasBike() {
 function startProximityRefresh(type) {
   if (NAV.proximityRefreshId) clearInterval(NAV.proximityRefreshId);
   NAV.proximityFor = type;
-  NAV.lastAlert = null;
+  // The plan already told you this pick-up was low: only pop up if it gets worse
+  const pl = NAV.plannedLow;
+  NAV.lastAlert = type === 'pickup' && pl && pl.id === S.pickup?.id ? { type, count: pl.count } : null;
   doProximityRefresh();
   NAV.proximityRefreshId = setInterval(doProximityRefresh, PROXIMITY_EVERY * 1000);
 }
@@ -1690,7 +1704,7 @@ async function doProximityRefresh() {
     }
   } else if (NAV.lastAlert && NAV.lastAlert.type === NAV.proximityFor) {
     hideAvailAlert(); NAV.lastAlert = null;            // it recovered: drop the warning
-    toast(isPickup ? `🚲 ${count} bikes at ${fresh.commonName} again` : `🅿 ${count} docks free at ${fresh.commonName} again`, 3500);
+    toast(isPickup ? `🚲 ${count} ${bikeNoun(count)} at ${fresh.commonName} again` : `🅿 ${count} docks free at ${fresh.commonName} again`, 3500);
   }
 }
 
@@ -1781,6 +1795,8 @@ function startNavigation(resumed) {
     if (!S.walkOnly && !S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
     NAV.steps = S.walkOnly ? buildWalkSteps(S.walkOnly) : buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
     NAV.current = 0;
+    const have = S.pickup ? usableBikes(S.pickup) : null;
+    NAV.plannedLow = have != null && have < LOW_AVAIL ? { id: S.pickup.id, count: have } : null;
   }
   track(resumed ? 'nav-resumed' : S.walkOnly ? 'nav-start-walk' : 'nav-start', resumed ? 'Navigation resumed' : 'Navigation started');
   Object.assign(NAV, { active: true, proximityFor: null, lastAlert: null, userLat: undefined, userLon: undefined,

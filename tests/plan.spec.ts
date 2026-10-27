@@ -169,3 +169,32 @@ test.describe('Planning', () => {
     await expect(page.locator('#start-nav-btn')).toBeVisible();
   });
 });
+
+test.describe('Low pick-up docks', () => {
+  const ebikesAt = () => +((S.pickup?.additionalProperties || []).find((x: any) => x.key === 'NbEBikes')?.value || 0);
+
+  test('P9 a dock with 2+ of your bike type wins over one with a single bike nearby', async ({ app, page }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#filter-row [data-filter="ebike"]').click();
+    await expect.poll(() => app.state(ebikesAt), { message: 'e-bikes at the chosen pick-up' }).toBeGreaterThanOrEqual(2);
+    expect(await app.state(() => S.pickup.id), 'not the dock with 1 e-bike').not.toBe('BikePoints_105');
+    await app.startNav();
+    await app.moveTo(51.5270, -0.0549);
+    await page.waitForTimeout(1500);
+    await expect(page.locator('#avail-popup'), 'no low-bikes popup straight after Start').toBeHidden();
+  });
+
+  test('P9 when only a low dock is near, the plan says so before you start', async ({ app, page, world }) => {
+    for (const s of world.stations) if (s.id !== 'BikePoints_105') { s.bikes -= s.ebikes; s.ebikes = 0; }
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#filter-row [data-filter="ebike"]').click();
+    await expect(page.locator('#journey-summary')).toContainText(/Only 1 e-bike at Hollybush Gardens/);
+    // It then runs out: the popup names the bike type you asked for
+    app.setStation('BikePoints_105', { ebikes: 0, bikes: 4 });
+    await app.startNav();
+    await app.moveTo(51.5270, -0.0549);
+    await expect(page.locator('#avail-popup-title')).toContainText('No e-bikes available');
+  });
+});
