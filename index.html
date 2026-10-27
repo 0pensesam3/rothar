@@ -919,7 +919,7 @@ function walkIsFaster(pickup, dropoff) {
 function showWalkPlan(walk) {
   track('walk-suggested', 'Walk suggested instead of bike');
   S.walkOnly = walk; S.pickup = S.dropoff = null; S.walkIn = S.cycle = S.walkOut = null;
-  S.journeyActive = true;
+  S.journeyActive = true; S.plannedAt = Date.now(); S.plannedSecs = walk.duration;
   drawLine(walk.geometry.coordinates, '#16a34a', true);
   map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
   document.getElementById('journey-summary').innerHTML = `
@@ -1058,10 +1058,15 @@ function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   const total = (walkIn?.duration||0)+(cycle?.duration||0)+(walkOut?.duration||0)+DOCK_OVERHEAD;
   const have = usableBikes(pickup);
   const lowTag = have < LOW_AVAIL ? `<div class="sum-tag warn">⚠ Only ${have} ${bikeNoun(have)} at ${esc(pickup.commonName)} right now</div>` : '';
+  // Destination is itself a dock with no space: say so, and where the bike goes instead (T5)
+  const destDock = S.stations.find(st => haversine(st.lat, st.lon, S.end.lat, S.end.lon) < 30);
+  const fullTag = destDock && destDock.id !== dropoff.id && prop(destDock, 'NbEmptyDocks') === 0
+    ? `<div class="sum-tag warn">🅿 ${esc(destDock.commonName)} is full. Return at ${esc(dropoff.commonName)}, then ${walkOut ? fmtTime(walkOut.duration) : fmtDist(woDist)} walk</div>` : '';
+  S.plannedAt = Date.now(); S.plannedSecs = total;
   const cDist = cycle ? fmtDist(cycle.distance) : fmtDist(haversine(pickup.lat,pickup.lon,dropoff.lat,dropoff.lon));
   const empty = prop(dropoff,'NbEmptyDocks');
   const legWalk = (r, d) => r ? `${fmtTime(r.duration)} walk` : `${fmtDist(d)} walk`;
-  document.getElementById('journey-summary').innerHTML = `${lowTag}
+  document.getElementById('journey-summary').innerHTML = `${fullTag}${lowTag}
     <div class="sum-main"><span class="sum-total">${fmtTime(total)}</span><span class="sum-arrive">Arrive ${clock(Date.now() + total*1000)}</span></div>
     <div class="sum-legs">🚶 ${legWalk(walkIn, wiDist)} · 🚲 ${cycle ? fmtTime(cycle.duration) + ' cycle' : 'cycle'} (${cDist}) · 🚶 ${legWalk(walkOut, woDist)}</div>`;
   let steps = '';
@@ -1826,6 +1831,7 @@ function startNavigation(resumed) {
 }
 
 function stopNavigation() {
+  const arrived = NAV.arrived === true;
   NAV.active = false;
   if (NAV.watchId !== null && NAV.watchId !== undefined) { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
   if (NAV.proximityRefreshId)      { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; }
@@ -1851,6 +1857,13 @@ function stopNavigation() {
   document.getElementById('nav-facing').style.display = 'none';
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
+  if (arrived) finishTrip();
+}
+
+// After arriving, the finished trip isn't offered again: clear it and start from where you are now (P10)
+function finishTrip() {
+  document.getElementById('to-clear').click();
+  if (NAV.userLat !== undefined) setStart(NAV.userLat, NAV.userLon, 'Your location', true);
 }
 
 // Coming back to the app mid-trip: restart GPS, find your place, refresh the station
@@ -1863,6 +1876,22 @@ document.addEventListener('visibilitychange', () => {
   navigator.geolocation?.getCurrentPosition(onNavPosition, () => {}, {enableHighAccuracy:true, maximumAge:0, timeout:10000});
   loadStations(false);
   toast('📍 Finding you again…', 2500);
+});
+
+// Back on the plan screen after a few minutes away: re-check the docks (and where you are)
+// so the plan and its arrival time are current (P10)
+const PLAN_STALE = 2 * 60 * 1000;
+function refreshArrival() {
+  const el = document.querySelector('#journey-summary .sum-arrive');
+  if (el && S.journeyActive && S.plannedSecs != null) el.textContent = `Arrive ${clock(Date.now() + S.plannedSecs * 1000)}`;
+}
+document.addEventListener('visibilitychange', () => {
+  if (NAV.active || document.visibilityState !== 'visible') return;
+  refreshArrival();
+  updateBadge();
+  if (!S.start || !S.end || Date.now() - (S.plannedAt || 0) < PLAN_STALE) return;
+  if (S.startIsGPS) requestLocation();          // re-plans from where you are now
+  else loadStations(false);                     // re-plans with fresh dock counts
 });
 
 // ─── Saved trip (so a closed app can pick up where it left off) ───────────────
@@ -1887,14 +1916,18 @@ function checkResume() {
   const current = Math.min(p?.current ?? s.current ?? 0, s.steps.length - 1);
   document.getElementById('resume-text').innerHTML = `<b>Trip to ${esc(s.end.label)}</b><br><span style="color:#666;font-size:12px">${s.walkOnly ? 'Walking' : 'Bike'} · still in progress</span>`;
   document.getElementById('resume-banner').classList.add('visible');
-  document.getElementById('resume-go').onclick = () => resumeTrip(s, current, !!p?.hasBike);
-  document.getElementById('resume-x').onclick = () => {
-    document.getElementById('resume-banner').classList.remove('visible');
-    if (s.historyId) { NAV.historyId = s.historyId; logJourneyEnd(false); }
-    clearNavState();
-    requestLocation();
-  };
+  resumeOffer = s;
+  document.getElementById('resume-go').onclick = () => { resumeOffer = null; resumeTrip(s, current, !!p?.hasBike); };
+  document.getElementById('resume-x').onclick = () => { dismissResume(); if (!S.start) requestLocation(); };
   return true;
+}
+// Saying no to the saved trip (×, or planning a new one): log it as ended and forget it
+let resumeOffer = null;
+function dismissResume() {
+  document.getElementById('resume-banner').classList.remove('visible');
+  if (resumeOffer?.historyId) { NAV.historyId = resumeOffer.historyId; logJourneyEnd(false); }
+  resumeOffer = null;
+  clearNavState();
 }
 
 function resumeTrip(s, current, hasBike) {
@@ -2024,6 +2057,7 @@ function setStart(lat, lon, label, isGPS=false) {
 }
 
 function setEnd(lat, lon, label) {
+  if (resumeOffer) dismissResume();               // a new destination answers the resume offer
   S.end = {lat,lon,label};
   document.getElementById('to-input').value = label;
   document.getElementById('to-clear').classList.add('visible');
@@ -2169,10 +2203,11 @@ function mergeSuggestions(q, remote) {
   }).slice(0, 7);
 }
 
-function bindAutocomplete(inputId, listId, onSelect) {
+function bindAutocomplete(inputId, listId, onSelect, placedLabel) {
   const input = document.getElementById(inputId);
   const list  = document.getElementById(listId);
-  let timer, cache = {}, inflight = null;
+  const clearBtn = document.getElementById(inputId.replace('-input', '-clear'));
+  let timer, cache = {}, inflight = null, searching = false;
   // Nearest earlier answer for a prefix of q, shown instantly while the new one loads
   const fromPrefix = q => { for (let i = q.length - 1; i >= MIN_QUERY; i--) { const c = cache[q.slice(0, i)]; if (c) return c; } return null; };
   const hide = () => list.style.display = 'none';
@@ -2210,7 +2245,17 @@ function bindAutocomplete(inputId, listId, onSelect) {
       } catch(e) { if (e.name !== 'AbortError' && inflight === ctl) hide(); }
     }, 120);
   });
-  input.addEventListener('blur',  () => setTimeout(hide, 200));
+  // Leaving the box without choosing: it goes back to the place the trip uses, so the box
+  // and the plan never disagree. Emptying it clears that end of the trip (S7).
+  input.addEventListener('blur', () => setTimeout(() => {
+    hide();
+    if (searching || NAV.active || document.activeElement === input) return;
+    const typed = input.value.trim(), placed = placedLabel();
+    if (typed === placed) return;
+    if (!typed) { clearBtn.click(); return; }
+    input.value = placed;
+    clearBtn.classList.toggle('visible', !!placed);
+  }, 200));
   // Tapping into the box shows recent places straight away, like Google Maps
   input.addEventListener('focus', () => { const q = input.value.trim(); show(mergeSuggestions(q, cache[q] || [])); });
   // Enter: go straight to the best match for the full text, no need to tap a suggestion
@@ -2221,11 +2266,13 @@ function bindAutocomplete(inputId, listId, onSelect) {
     if (!q) return;
     hide(); toast('Finding address…', 0);
     let items = cache[q];
+    searching = true;
     try {
       if (!items || !items.length) { items = await getSuggestions(q, ctl.signal); cache[q] = items; }
       // Photon can miss full addresses with postcodes; Nominatim handles those better
       if (!items.length) items = await nominatimSuggestions(q, splitHouseNumber(q).num).catch(() => []);
     } catch (e) { if (e.name === 'AbortError') return; items = []; }
+    finally { if (inflight === ctl) searching = false; }
     if (inflight !== ctl || input.value.trim() !== q) return;    // you kept typing, so drop this result
     if (!items.length) items = mergeSuggestions(q, []);          // last resort: recent places, stations
     if (!items.length) { toast(`Couldn't find "${q}"`, 3500); return; }
@@ -2305,8 +2352,8 @@ document.getElementById('avail-popup-close').addEventListener('click', hideAvail
 document.getElementById('avail-wait').addEventListener('click', hideAvailAlert);
 document.getElementById('avail-reroute').addEventListener('click', rerouteStation);
 
-bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false));
-bindAutocomplete('to-input',  'to-ac',  setEnd);
+bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false), () => S.start?.label || '');
+bindAutocomplete('to-input',  'to-ac',  setEnd, () => S.end?.label || '');
 
 // Re-render exploration-mode stations when the map moves
 let moveTimer;
@@ -2315,9 +2362,10 @@ map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(
 map.on('move', e => { if (NAV.active && e.originalEvent && NAV.preview == null) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); }, 15000);   // keeps the arrival time honest when you stop
+setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); else refreshArrival(); }, 15000);   // keeps the arrival time honest when you stop
 loadStations();
-if (!checkResume()) setTimeout(requestLocation, 600);
+checkResume();
+setTimeout(requestLocation, 600);                 // even while the resume offer shows, so a new trip can be planned (N12)
 </script>
 <!-- Anonymous usage counts: no cookies, no personal data. Dashboard visible only to the site owner. -->
 <script data-goatcounter="https://rothar.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
