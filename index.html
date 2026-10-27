@@ -241,6 +241,18 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
 #nav-facing { position: absolute; bottom: calc(160px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
 #nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
 
+/* While navigating, messages and the popup sit below the turn card and dock count, never on them (L7).
+   --nav-h is the height of that block, kept current from script. */
+body.navigating #toast { top: calc(var(--nav-h, 160px) + 8px); white-space: normal; width: max-content; max-width: calc(100% - 24px); }
+body.navigating #avail-popup { max-height: calc(100% - 112px - env(safe-area-inset-bottom) - var(--nav-h, 160px) - 8px); overflow-y: auto; }
+/* Landscape phone: turn card and messages on the left, the popup on the right */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.navigating #nav-overlay { right: auto; width: min(440px, 52%); }
+  body.navigating #toast { left: 8px; transform: none; max-width: calc(min(440px, 52%) - 16px); }
+  body.navigating #avail-popup { left: auto; right: 12px; width: min(380px, calc(48% - 24px)); max-height: calc(100% - 112px - env(safe-area-inset-bottom) - 18px); }
+  body.navigating #nav-facing { left: 76%; }
+}
+
 /* ── Availability popup ── */
 #avail-popup { position: absolute; bottom: calc(112px + env(safe-area-inset-bottom)); left: 12px; right: 12px; background: white; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
 #avail-popup.visible { display: block; }
@@ -2360,6 +2372,14 @@ let moveTimer;
 map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(moveTimer); moveTimer = setTimeout(renderStations, 150); } });
 // During navigation, a drag/pinch by you pauses the follow camera for a few seconds
 map.on('move', e => { if (NAV.active && e.originalEvent && NAV.preview == null) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
+
+// Height of the turn card block, so messages can sit just below it (L7)
+(() => {
+  const ov = document.getElementById('nav-overlay');
+  const set = () => document.body.style.setProperty('--nav-h', `${ov.offsetHeight}px`);
+  if (window.ResizeObserver) new ResizeObserver(set).observe(ov);
+  window.addEventListener('resize', set);
+})();
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); else refreshArrival(); }, 15000);   // keeps the arrival time honest when you stop
