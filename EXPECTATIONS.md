@@ -20,6 +20,7 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **S4** Places you've picked before show as "Recent" as soon as you tap into an empty box.
 - **S5** Docking stations come up in search by name.
 - **S6** If the address search service is down, typing still offers recent places and stations, and nothing breaks.
+- **S7** What's written in the start and destination boxes always matches the trip on screen. If you edit a box and leave it without choosing, the app either puts the old place back or clears the plan.
 
 ## Planning a trip
 
@@ -31,6 +32,8 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **P6** The step list reads like directions a person would follow. It doesn't repeat "You have arrived at your destination" partway through the trip.
 - **P7** After planning, the whole trip (start, pick-up dock, return dock, destination) is in view on the map, not hidden under the search panel or the bottom sheet. *(partly judgement)*
 - **P8** Changing the route type (Balanced, Fastest, Bike lanes) re-plans the trip.
+- **P9** The plan doesn't choose a pick-up dock with fewer than 2 of the chosen bike type when one with 2 or more is a similar walk away. If it has to, the plan says so before you start.
+- **P10** Coming back to a plan after a few minutes away re-checks the docks and updates the arrival time. After arriving, the finished trip isn't offered again as a fresh plan.
 
 ## Navigating
 
@@ -45,6 +48,7 @@ Lines marked *(judgement)* can't be fully settled by an automated check. The age
 - **N9** Reaching the destination ends navigation with "You have arrived!" and the trip shows as completed in Activity, with the distance cycled.
 - **N10** Closing or reloading the app mid-trip offers to resume that trip. Resuming puts you back in navigation.
 - **N11** A walking-only trip navigates the same way, and its End button says "End walk".
+- **N12** While the resume offer is showing, the app still finds your location and fills the start box, so a new trip can be planned without answering the offer first.
 
 ## Messy GPS
 
@@ -67,6 +71,8 @@ Real phones jitter and drop out. These check the app copes with a bad fix as wel
 - **A3** The return dock is re-checked from about 5 minutes before you reach it, by time left on the road, not only once you're at the dock. If it drops below 2 free spaces, the same popup appears for docks.
 - **A4** Reroute picks a different dock that has what you need, and navigation carries on to it.
 - **A5** After Wait, if the dock recovers, the popup goes away and the app says the bikes or spaces are back.
+- **A6** Once the bike is picked up, the app stops watching the pick-up dock. Any pick-up popup still showing goes away, and no new one appears.
+- **A7** Reroute never adds a second pick-up once you're on a bike. Mid-ride, it only ever changes the return dock.
 
 ## When things go wrong
 
@@ -83,6 +89,7 @@ Real phones jitter and drop out. These check the app copes with a bad fix as wel
 - **T2** If there's no dock within 800 m of the start or destination, the app uses the nearest one further away and says how far the walk is.
 - **T3** With E-bike chosen and no e-bikes nearby, the app says so and offers Standard. It never quietly picks a standard bike.
 - **T4** Start and destination in the same place: the app says so and doesn't plan or error.
+- **T5** If the destination is a docking station with no free spaces, the summary says it's full and names the dock you'll return to instead.
 
 ## Impatient user
 
@@ -104,6 +111,7 @@ Real phones jitter and drop out. These check the app copes with a bad fix as wel
 - **L4** On a 375 × 667 screen (iPhone SE), nothing important is cut off or overlapping.
 - **L5** In landscape, the map, turn card and bottom bar all still fit on screen.
 - **L6** A very long road or station name wraps or shortens with "…" and never pushes a button off screen.
+- **L7** During navigation, messages and popups never cover the turn card's manoeuvre or distance, in portrait or landscape.
 
 ## Free roam
 

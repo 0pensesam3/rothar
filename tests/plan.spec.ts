@@ -169,3 +169,81 @@ test.describe('Planning', () => {
     await expect(page.locator('#start-nav-btn')).toBeVisible();
   });
 });
+
+test.describe('Low pick-up docks', () => {
+  const ebikesAt = () => +((S.pickup?.additionalProperties || []).find((x: any) => x.key === 'NbEBikes')?.value || 0);
+
+  test('P9 a dock with 2+ of your bike type wins over one with a single bike nearby', async ({ app, page }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#filter-row [data-filter="ebike"]').click();
+    await expect.poll(() => app.state(ebikesAt), { message: 'e-bikes at the chosen pick-up' }).toBeGreaterThanOrEqual(2);
+    expect(await app.state(() => S.pickup.id), 'not the dock with 1 e-bike').not.toBe('BikePoints_105');
+    await app.startNav();
+    await app.moveTo(51.5270, -0.0549);
+    await page.waitForTimeout(1500);
+    await expect(page.locator('#avail-popup'), 'no low-bikes popup straight after Start').toBeHidden();
+  });
+
+  test('P9 when only a low dock is near, the plan says so before you start', async ({ app, page, world }) => {
+    for (const s of world.stations) if (s.id !== 'BikePoints_105') { s.bikes -= s.ebikes; s.ebikes = 0; }
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#filter-row [data-filter="ebike"]').click();
+    await expect(page.locator('#journey-summary')).toContainText(/Only 1 e-bike at Hollybush Gardens/);
+    // It then runs out: the popup names the bike type you asked for
+    app.setStation('BikePoints_105', { ebikes: 0, bikes: 4 });
+    await app.startNav();
+    await app.moveTo(51.5270, -0.0549);
+    await expect(page.locator('#avail-popup-title')).toContainText('No e-bikes available');
+  });
+});
+
+test.describe('Boxes match the trip', () => {
+  const leave = (page: any) => page.locator('#map-wrap').click({ position: { x: 200, y: 260 } });
+
+  test('S7 edit the destination box without picking: the box goes back to the planned place', async ({ app, page }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#to-input').click();
+    await page.locator('#to-input').fill('Columbia Road');
+    await leave(page);
+    await expect(page.locator('#to-input')).toHaveValue(await app.state(() => S.end.label));
+    await expect(page.locator('#to-input')).toHaveValue('Liverpool Street Station');
+  });
+
+  test('S7 edit the start box without picking: the box goes back to your location', async ({ app, page }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#from-input').click();
+    await page.locator('#from-input').fill('Columbia');
+    await leave(page);
+    await expect(page.locator('#from-input')).toHaveValue('Your location');
+  });
+
+  test('S7 empty the destination box and leave it: the plan goes', async ({ app, page }) => {
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await page.locator('#to-input').click();
+    await page.locator('#to-input').fill('');
+    await leave(page);
+    await expect(page.locator('#start-nav-btn')).toBeHidden();
+    expect(await app.state(() => S.end)).toBeNull();
+  });
+});
+
+test.describe('Coming back to a plan', () => {
+  test('P10 back after 25 minutes: the docks are re-checked and the arrival time moves on', async ({ app, page, world }) => {
+    await page.clock.install();
+    await app.open();
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    const arrive = await page.locator('.sum-arrive').innerText();
+    const before = world.requests.filter(u => u.endsWith('/BikePoint/')).length;
+    await app.moveTo(51.5262, -0.0569);                  // you walked a little while away
+    await page.clock.fastForward('25:00');
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect.poll(() => world.requests.filter(u => u.endsWith('/BikePoint/')).length, { message: 'docks re-checked' }).toBeGreaterThan(before);
+    await expect(page.locator('.sum-arrive')).not.toHaveText(arrive);
+    await expect.poll(() => app.state(() => S.start.lat), { message: 'planned from where you are now' }).toBeCloseTo(51.5262, 4);
+  });
+});
