@@ -161,4 +161,27 @@ test.describe('Navigating', () => {
     await app.travel({ stepMs: 30 });
     await expect(page.locator('#toast')).toContainText('You have arrived');
   });
+  test('N12 while the resume offer shows, your location still fills the start box', async ({ app, page }) => {
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await app.startNav();
+    await app.moveTo(HOME.lat, HOME.lon);
+    await page.waitForTimeout(300);
+    await page.reload();
+    await expect(page.locator('#resume-banner')).toBeVisible();
+    await expect(page.locator('#from-input')).toHaveValue('Your location');
+    await app.search('to', 'Columbia', 'Columbia Road Flower Market');   // ignore the offer, plan something new
+    await expect(page.locator('#start-nav-btn')).toBeVisible();
+    await expect(page.locator('#resume-banner'), 'a new trip answers the offer').toBeHidden();
+  });
+
+  test('P10 after arriving, the finished trip is not offered again', async ({ app, page }) => {
+    await app.planTo('Liverpool', 'Liverpool Street Station');
+    await app.startNav();
+    await app.travel({ stepMs: 25 });
+    await expect(page.locator('#toast')).toContainText('You have arrived');
+    await expect(page.locator('#start-nav-btn')).toBeHidden();
+    await expect(page.locator('#to-input')).toHaveValue('');
+    const start = await app.state(() => S.start);
+    expect(Math.abs(start.lat - 51.5178) + Math.abs(start.lon + 0.0817), 'start is where you arrived').toBeLessThan(0.002);
+  });
 });

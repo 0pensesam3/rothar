@@ -119,3 +119,14 @@ test.describe('Impatient user', () => {
     expect(left, 'still has somewhere to return the bike').toContain('dropoff');
   });
 });
+
+test.describe('Full destination dock', () => {
+  test('T5 a full dock as the destination is called out, with the dock you return to instead', async ({ app, page }) => {
+    await app.open();
+    await app.waitForGpsStart();
+    await app.search('to', 'Wormwood', /Wormwood Street/);
+    await expect(page.locator('#start-nav-btn')).toBeVisible();
+    await expect(page.locator('#journey-summary')).toContainText(/Wormwood Street.* is full/);
+    await expect(page.locator('#journey-summary')).toContainText('Return at Bishopsgate');
+  });
+});

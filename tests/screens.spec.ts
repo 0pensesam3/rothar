@@ -1,6 +1,8 @@
 import { test, expect, App } from './support/harness';
 import type { Page, Locator } from '@playwright/test';
 
+declare const S: any;
+
 // Other phone shapes. The checks here catch things cut off or overlapping;
 // the screenshots are for the judgement part.
 
@@ -85,5 +87,37 @@ test.describe('Long names', () => {
       }).filter(Boolean);
     });
     expect.soft(spill, 'parts of the turn card running past its edge').toEqual([]);
+  });
+});
+
+// L7: nothing that pops up during navigation sits on the turn card, in either orientation
+async function popupsClearOfCard(app: App, page: Page, name: string) {
+  await app.open();
+  await app.planTo('Liverpool', 'Liverpool Street Station');
+  await app.startNav();
+  await app.travel({ stepMs: 20, legs: [0] });
+  await page.evaluate(() => {
+    const w = window as any;
+    w.toast('Return rerouted to Bishopsgate, Liverpool Street (opposite the station)', 0);
+    w.showAvailAlert(S.dropoff, 'dock');
+  });
+  await app.shot(`${name}-popups`);
+  const card = page.locator('#nav-card');
+  await expect(page.locator('#avail-popup')).toBeVisible();
+  await apart(page.locator('#toast'), card, 'message and the turn card');
+  await apart(page.locator('#avail-popup'), card, 'popup and the turn card');
+  await apart(page.locator('#toast'), page.locator('#nav-station'), 'message and the dock count');
+  await onScreen(page, page.locator('#avail-reroute'), 'Reroute button');
+}
+
+test.describe('Messages during navigation', () => {
+  test('L7 portrait: messages and the popup stay off the turn card', async ({ app, page }) => {
+    await popupsClearOfCard(app, page, 'l7-portrait');
+  });
+  test.describe('landscape', () => {
+    test.use({ viewport: { width: 844, height: 390 } });
+    test('L7 landscape: messages and the popup stay off the turn card', async ({ app, page }) => {
+      await popupsClearOfCard(app, page, 'l7-landscape');
+    });
   });
 });

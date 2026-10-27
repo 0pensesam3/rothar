@@ -243,6 +243,18 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
 #nav-facing { position: absolute; bottom: calc(160px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
 #nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
 
+/* While navigating, messages and the popup sit below the turn card and dock count, never on them (L7).
+   --nav-h is the height of that block, kept current from script. */
+body.navigating #toast { top: calc(var(--nav-h, 160px) + 8px); white-space: normal; width: max-content; max-width: calc(100% - 24px); }
+body.navigating #avail-popup { max-height: calc(100% - 112px - env(safe-area-inset-bottom) - var(--nav-h, 160px) - 8px); overflow-y: auto; }
+/* Landscape phone: turn card and messages on the left, the popup on the right */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.navigating #nav-overlay { right: auto; width: min(440px, 52%); }
+  body.navigating #toast { left: 8px; transform: none; max-width: calc(min(440px, 52%) - 16px); }
+  body.navigating #avail-popup { left: auto; right: 12px; width: min(380px, calc(48% - 24px)); max-height: calc(100% - 112px - env(safe-area-inset-bottom) - 18px); }
+  body.navigating #nav-facing { left: 76%; }
+}
+
 /* ── Availability popup ── */
 #avail-popup { position: absolute; bottom: calc(112px + env(safe-area-inset-bottom)); left: 12px; right: 12px; background: white; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,0.22); z-index: 1600; display: none; overflow: hidden; pointer-events: auto; }
 #avail-popup.visible { display: block; }
@@ -284,6 +296,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
 #start-nav-btn.walk { background: #16a34a; }
 #journey-summary { padding: 6px 14px 10px; background: white; border-bottom: 1px solid #f0f0ee; position: sticky; top: 0; }
 .sum-tag    { display: inline-block; font-size: 12px; font-weight: 700; color: #166534; background: #dcfce7; border-radius: 12px; padding: 3px 10px; margin-bottom: 4px; }
+.sum-tag.warn { color: #92400e; background: #fef3c7; }
 .sum-main   { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .sum-total  { font-size: 24px; font-weight: 700; color: #111; }
 .sum-arrive { font-size: 16px; font-weight: 600; color: #374151; }
@@ -407,7 +420,7 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
   </div>
 
   <div id="history-panel">
-    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 13 Oct, 22:15</span></h2><button id="history-close">×</button></div>
+    <div id="history-head"><h2>Activity <span style="font-size:11px;font-weight:400;color:#999">build 27 Oct, 10:05</span></h2><button id="history-close">×</button></div>
     <div id="history-totals"></div>
     <div class="hist-note">Trips you navigated in this app, saved on this phone only. Rides hired outside the app won't show.<br><br>
       Powered by TfL Open Data. Rothar is not affiliated with or endorsed by TfL. Map © OpenStreetMap contributors, OpenFreeMap.<br>
@@ -449,6 +462,7 @@ const DOCK_OVERHEAD  = 90;    // s — releasing a bike at the dock plus docking
 const DETOUR         = 1.3;   // straight-line → street distance, for estimates only
 const PROXIMITY_SECS = 300;   // s — start watching a station when this close to it
 const PROXIMITY_EVERY = 15;   // s — how often to re-check it in that window
+const PICKUP_SPARE_WALK = 3;  // min — extra walk worth it to reach a dock with 2+ of your bike type
 const RESUME_MAX_AGE = 3 * 3600 * 1000;   // ms — offer to resume a trip for this long after it was last seen
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -922,7 +936,7 @@ function walkIsFaster(pickup, dropoff) {
 function showWalkPlan(walk) {
   track('walk-suggested', 'Walk suggested instead of bike');
   S.walkOnly = walk; S.pickup = S.dropoff = null; S.walkIn = S.cycle = S.walkOut = null;
-  S.journeyActive = true;
+  S.journeyActive = true; S.plannedAt = Date.now(); S.plannedSecs = walk.duration;
   drawLine(walk.geometry.coordinates, '#16a34a', true);
   map.fitBounds(L.latLngBounds([[S.start.lat,S.start.lon],[S.end.lat,S.end.lon]]), {padding:[60,60]});
   document.getElementById('journey-summary').innerHTML = `
@@ -982,7 +996,10 @@ async function planJourney(silent=false) {
   }, null)?.s;
   if (!seedDrop) { toast('⚠ No docking spaces near destination.',4000); return; }
 
-  const {station:pickup, dist:wiDist} = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon);
+  // A dock with 2+ of your bike type beats one with a single bike, if it's a similar walk away (P9)
+  const nearest = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon);
+  const roomy   = bestPickup(S.start.lat,S.start.lon, seedDrop.lat,seedDrop.lon, null, LOW_AVAIL);
+  const {station:pickup, dist:wiDist} = roomy.station && (roomy.dist - nearest.dist) / WALK_SPD <= PICKUP_SPARE_WALK ? roomy : nearest;
   if (!pickup) { toast(`⚠ No ${S.bikeFilter==='any'?'':S.bikeFilter+' '}bikes nearby.`,4000); return; }
 
   const {station:dropoff, dist:woDist} = bestDropoff(pickup.lat,pickup.lon, S.end.lat,S.end.lon);
@@ -1056,10 +1073,17 @@ function buildStepRows(route) {
 
 function renderPanel(pickup,dropoff,walkIn,cycle,walkOut,wiDist,woDist) {
   const total = (walkIn?.duration||0)+(cycle?.duration||0)+(walkOut?.duration||0)+DOCK_OVERHEAD;
+  const have = usableBikes(pickup);
+  const lowTag = have < LOW_AVAIL ? `<div class="sum-tag warn">⚠ Only ${have} ${bikeNoun(have)} at ${esc(pickup.commonName)} right now</div>` : '';
+  // Destination is itself a dock with no space: say so, and where the bike goes instead (T5)
+  const destDock = S.stations.find(st => haversine(st.lat, st.lon, S.end.lat, S.end.lon) < 30);
+  const fullTag = destDock && destDock.id !== dropoff.id && prop(destDock, 'NbEmptyDocks') === 0
+    ? `<div class="sum-tag warn">🅿 ${esc(destDock.commonName)} is full. Return at ${esc(dropoff.commonName)}, then ${walkOut ? fmtTime(walkOut.duration) : fmtDist(woDist)} walk</div>` : '';
+  S.plannedAt = Date.now(); S.plannedSecs = total;
   const cDist = cycle ? fmtDist(cycle.distance) : fmtDist(haversine(pickup.lat,pickup.lon,dropoff.lat,dropoff.lon));
   const empty = prop(dropoff,'NbEmptyDocks');
   const legWalk = (r, d) => r ? `${fmtTime(r.duration)} walk` : `${fmtDist(d)} walk`;
-  document.getElementById('journey-summary').innerHTML = `
+  document.getElementById('journey-summary').innerHTML = `${fullTag}${lowTag}
     <div class="sum-main"><span class="sum-total">${fmtTime(total)}</span><span class="sum-arrive">Arrive ${clock(Date.now() + total*1000)}</span></div>
     <div class="sum-legs">🚶 ${legWalk(walkIn, wiDist)} · 🚲 ${cycle ? fmtTime(cycle.duration) + ' cycle' : 'cycle'} (${cDist}) · 🚶 ${legWalk(walkOut, woDist)}</div>`;
   let steps = '';
@@ -1116,17 +1140,17 @@ function estimateLikelihood(station, type) {
 function showAvailAlert(station, type) {
   const docks = prop(station,'NbEmptyDocks');
   const count = type === 'bike' ? usableBikes(station) : docks;
-  const thing = type === 'bike' ? 'bike' : 'dock';
   const lh = estimateLikelihood(station, type);
 
   const isPickup = type === 'bike';
   const emoji = isPickup ? '🚲' : '🅿';
+  const one = isPickup ? bikeNoun(1) : 'dock', many = isPickup ? bikeNoun(2) : 'docks';
   document.getElementById('avail-popup-title').textContent =
-    count === 0 ? `${emoji} No ${thing}s available` : `${emoji} Only ${count} ${thing}${count!==1?'s':''} left`;
+    count === 0 ? `${emoji} No ${many} available` : `${emoji} Only ${count} ${count === 1 ? one : many} left`;
   document.getElementById('avail-popup-body').textContent =
     count === 0
-      ? `${isPickup?'Pick-up':'Return'} station ${station.commonName} has no ${thing}s right now.`
-      : `${isPickup?'Pick-up':'Return'} station ${station.commonName} is very low on ${thing}s.`;
+      ? `${isPickup?'Pick-up':'Return'} station ${station.commonName} has no ${many} right now.`
+      : `${isPickup?'Pick-up':'Return'} station ${station.commonName} is very low on ${many}.`;
   document.getElementById('avail-popup-likelihood').innerHTML =
     `<span style="color:${lh.color};font-weight:500;">📊 ${lh.text}</span><br><span style="color:#6b7280;">Estimated wait if you stay: ${lh.wait}</span>`;
 
@@ -1147,6 +1171,8 @@ async function rerouteStation() {
 
   // Not navigating yet: a fresh plan already picks the best stations
   if (!NAV.active) { await loadStations(false); planJourney(); return; }
+  // Already on a bike: never send you to collect a second one (A7)
+  if (alert.type === 'bike' && NAV.hasBike) return;
 
   toast(alert.type === 'dock' ? 'Finding another return station…' : 'Finding another pick-up station…', 0);
   await loadStations(false);
@@ -1183,9 +1209,8 @@ async function rerouteStation() {
     toast(`Pick-up rerouted to ${newPickup.commonName}`,3500); track('reroute-bike', 'Rerouted: no bikes');
   }
 
-  NAV.current = 0;
-  if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId = null; }
-  NAV.proximityFor = null;
+  NAV.current = 0; NAV.awayFixes = 0;
+  stopProximity();
   redrawJourney();
   renderNavAlternatives();
   updateNavCard();
@@ -1230,13 +1255,14 @@ function renderNavAlternatives() {
     if (shown.has(s.id)) return;
     const nearPickup  = haversine(S.pickup.lat,  S.pickup.lon,  s.lat, s.lon) < ALT_RADIUS;
     const nearDropoff = haversine(S.dropoff.lat, S.dropoff.lon, s.lat, s.lon) < ALT_RADIUS;
-    if (!nearPickup && !nearDropoff) return;
+    if (!nearDropoff && (!nearPickup || NAV.hasBike)) return;   // once on the bike, only return docks matter
     const bikes = prop(s,'NbBikes'), ebikes = prop(s,'NbEBikes');
     const empty = prop(s,'NbEmptyDocks');
     // Only show alts that could actually help
-    const useful = nearPickup ? bikes > 0 : empty > 0;
+    const asPickup = nearPickup && !NAV.hasBike;
+    const useful = asPickup ? bikes > 0 : empty > 0;
     if (!useful) return;
-    const label = nearPickup
+    const label = asPickup
       ? `<div class="popup-name">🔄 Alt pick-up</div><div class="popup-avail">${availabilityHTML(s)}</div><div style="font-size:11px;color:#92400e;margin-top:4px;">${s.commonName}</div>`
       : `<div class="popup-name">🔄 Alt return</div><div class="popup-avail">${availabilityHTML(s)}</div><div style="font-size:11px;color:#92400e;margin-top:4px;">${s.commonName}</div>`;
     L.marker([s.lat,s.lon], {icon:makeAltStationIcon(bikes,ebikes), zIndexOffset:400})
@@ -1423,8 +1449,7 @@ function renderNavStation() {
   if (!st) { el.style.display = 'none'; return; }
   const isP = nxt.type === 'pickup';
   const n = isP ? usableBikes(st) : prop(st, 'NbEmptyDocks');
-  const noun = isP ? (S.bikeFilter === 'ebike' ? 'e-bike' : S.bikeFilter === 'standard' ? 'standard bike' : 'bike') : 'dock';
-  const what = `${noun}${n === 1 ? '' : 's'}${isP ? '' : ' free'}`;
+  const what = isP ? bikeNoun(n) : `dock${n === 1 ? '' : 's'} free`;
   const eb = isP && S.bikeFilter === 'any' && prop(st, 'NbEBikes') > 0 ? ` (⚡${prop(st, 'NbEBikes')})` : '';
   const cls = n === 0 ? 'bad' : n <= LOW_AVAIL ? 'warn' : 'ok';
   const ageS = S.lastRefresh ? (Date.now() - S.lastRefresh) / 1000 : null;
@@ -1603,6 +1628,12 @@ function syncJourneyStations() {
   if (S.dropoff) S.dropoff = S.stations.find(s => s.id === S.dropoff.id) || S.dropoff;
 }
 
+// "e-bike" / "standard bikes" / "bike", for the bike type you chose
+function bikeNoun(n) {
+  const w = S.bikeFilter === 'ebike' ? 'e-bike' : S.bikeFilter === 'standard' ? 'standard bike' : 'bike';
+  return n === 1 ? w : w + 's';
+}
+
 // Bikes that count for the current filter
 function usableBikes(st) {
   const bikes = prop(st,'NbBikes'), ebikes = prop(st,'NbEBikes');
@@ -1623,11 +1654,37 @@ function nextStationStep() {
   return null;
 }
 
+function stopProximity() {
+  if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId = null; }
+  NAV.proximityFor = null;
+}
+
+// You have the bike once you're past the pick-up step and have moved away from that dock.
+// Two fixes in a row more than 60 m out, so a single GPS jump at the dock doesn't count.
+function updateHasBike(lat, lon) {
+  if (NAV.hasBike || S.walkOnly || !S.pickup) return;
+  const pi = NAV.steps.findIndex(s => s.legType === 'pickup');
+  if (pi < 0) { setHasBike(); return; }               // trip rebuilt from the cycle leg (return dock rerouted)
+  if (NAV.current <= pi) { NAV.awayFixes = 0; return; }
+  NAV.awayFixes = haversine(lat, lon, S.pickup.lat, S.pickup.lon) > 60 ? (NAV.awayFixes || 0) + 1 : 0;
+  if (NAV.awayFixes >= 2) setHasBike();
+}
+function setHasBike() {
+  NAV.hasBike = true;
+  if (NAV.proximityFor === 'pickup') stopProximity();
+  if (pendingAlert?.type === 'bike') hideAvailAlert();
+  if (NAV.lastAlert?.type === 'pickup') NAV.lastAlert = null;
+  renderNavAlternatives();
+  saveNavProgress();
+}
+
 // Starts ~5 min before each station: one check straight away, then every PROXIMITY_EVERY seconds
 function startProximityRefresh(type) {
   if (NAV.proximityRefreshId) clearInterval(NAV.proximityRefreshId);
   NAV.proximityFor = type;
-  NAV.lastAlert = null;
+  // The plan already told you this pick-up was low: only pop up if it gets worse
+  const pl = NAV.plannedLow;
+  NAV.lastAlert = type === 'pickup' && pl && pl.id === S.pickup?.id ? { type, count: pl.count } : null;
   doProximityRefresh();
   NAV.proximityRefreshId = setInterval(doProximityRefresh, PROXIMITY_EVERY * 1000);
 }
@@ -1652,6 +1709,7 @@ async function doProximityRefresh() {
 
   const fresh = await refreshOneStation(isPickup ? S.pickup : S.dropoff);
   if (!fresh || NAV.proximityFor !== (isPickup ? 'pickup' : 'dropoff')) return;   // watch stopped while fetching
+  if (isPickup && NAV.hasBike) return;                                             // you've ridden off with the bike
   if (isPickup) S.pickup = fresh; else S.dropoff = fresh;
   const count = countOf(fresh);
   renderNavStation();
@@ -1668,7 +1726,7 @@ async function doProximityRefresh() {
     }
   } else if (NAV.lastAlert && NAV.lastAlert.type === NAV.proximityFor) {
     hideAvailAlert(); NAV.lastAlert = null;            // it recovered: drop the warning
-    toast(isPickup ? `🚲 ${count} bikes at ${fresh.commonName} again` : `🅿 ${count} docks free at ${fresh.commonName} again`, 3500);
+    toast(isPickup ? `🚲 ${count} ${bikeNoun(count)} at ${fresh.commonName} again` : `🅿 ${count} docks free at ${fresh.commonName} again`, 3500);
   }
 }
 
@@ -1732,11 +1790,12 @@ function onNavPosition(pos) {
   updateHeading();
   if (!NAV.camStarted) { NAV.camStarted = true; initCamera(); }
 
+  // Once you've ridden off with the bike, the pick-up dock no longer matters (A6)
+  updateHasBike(lat, lon);
+
   // Watch the next station once we're ~5 min from it
   const nxt = nextStationStep();
-  // Stop when none is left, or once we've ridden off from the pick-up dock and the return dock is still far off
-  const leftPickup = NAV.proximityFor === 'pickup' && nxt && nxt.type !== 'pickup' && nxt.secs > PROXIMITY_SECS && haversine(lat, lon, S.pickup.lat, S.pickup.lon) > 100;
-  if (!nxt || leftPickup) { if (NAV.proximityRefreshId) { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; } NAV.proximityFor=null; }
+  if (!nxt || (NAV.proximityFor === 'pickup' && NAV.hasBike)) stopProximity();
   else if (nxt.secs <= PROXIMITY_SECS && NAV.proximityFor !== nxt.type) startProximityRefresh(nxt.type);
 
   updateNavCard();
@@ -1758,12 +1817,14 @@ function startNavigation(resumed) {
     if (!S.walkOnly && !S.walkIn && !S.cycle && !S.walkOut) { toast('Plan a journey first.',3000); return; }
     NAV.steps = S.walkOnly ? buildWalkSteps(S.walkOnly) : buildNavSteps(S.walkIn, S.cycle, S.walkOut, S.pickup, S.dropoff);
     NAV.current = 0;
+    const have = S.pickup ? usableBikes(S.pickup) : null;
+    NAV.plannedLow = have != null && have < LOW_AVAIL ? { id: S.pickup.id, count: have } : null;
   }
   track(resumed ? 'nav-resumed' : S.walkOnly ? 'nav-start-walk' : 'nav-start', resumed ? 'Navigation resumed' : 'Navigation started');
   Object.assign(NAV, { active: true, proximityFor: null, lastAlert: null, userLat: undefined, userLon: undefined,
     view: 'follow', gpsHeading: null, heading: null, headingTarget: null, aheadBearing: null,
     dispLat: null, dispLon: null, dispHeading: null, camReady: false, camStarted: false, paused: false,
-    resync: resumed, pinKey: null, preview: null });
+    resync: resumed, pinKey: null, preview: null, hasBike: resumed ? !!NAV.hasBike : false, awayFixes: 0 });
   setViewLabel();
   startRider3d();
   requestWakeLock();
@@ -1787,6 +1848,7 @@ function startNavigation(resumed) {
 }
 
 function stopNavigation() {
+  const arrived = NAV.arrived === true;
   NAV.active = false;
   if (NAV.watchId !== null && NAV.watchId !== undefined) { navigator.geolocation.clearWatch(NAV.watchId); NAV.watchId=null; }
   if (NAV.proximityRefreshId)      { clearInterval(NAV.proximityRefreshId); NAV.proximityRefreshId=null; }
@@ -1812,6 +1874,13 @@ function stopNavigation() {
   document.getElementById('nav-facing').style.display = 'none';
   NAV.arrived = false; NAV.proximityFor = null;
   renderStations();
+  if (arrived) finishTrip();
+}
+
+// After arriving, the finished trip isn't offered again: clear it and start from where you are now (P10)
+function finishTrip() {
+  document.getElementById('to-clear').click();
+  if (NAV.userLat !== undefined) setStart(NAV.userLat, NAV.userLon, 'Your location', true);
 }
 
 // Coming back to the app mid-trip: restart GPS, find your place, refresh the station
@@ -1826,6 +1895,22 @@ document.addEventListener('visibilitychange', () => {
   toast('📍 Finding you again…', 2500);
 });
 
+// Back on the plan screen after a few minutes away: re-check the docks (and where you are)
+// so the plan and its arrival time are current (P10)
+const PLAN_STALE = 2 * 60 * 1000;
+function refreshArrival() {
+  const el = document.querySelector('#journey-summary .sum-arrive');
+  if (el && S.journeyActive && S.plannedSecs != null) el.textContent = `Arrive ${clock(Date.now() + S.plannedSecs * 1000)}`;
+}
+document.addEventListener('visibilitychange', () => {
+  if (NAV.active || document.visibilityState !== 'visible') return;
+  refreshArrival();
+  updateBadge();
+  if (!S.start || !S.end || Date.now() - (S.plannedAt || 0) < PLAN_STALE) return;
+  if (S.startIsGPS) requestLocation();          // re-plans from where you are now
+  else loadStations(false);                     // re-plans with fresh dock counts
+});
+
 // ─── Saved trip (so a closed app can pick up where it left off) ───────────────
 const NAV_KEY = 'rothar-nav-v1', NAV_PROG_KEY = 'rothar-nav-progress-v1';
 function saveNavState() {
@@ -1837,7 +1922,7 @@ function saveNavState() {
     saveNavProgress();
   } catch (e) { console.warn('Could not save trip:', e.message); }
 }
-function saveNavProgress() { try { localStorage.setItem(NAV_PROG_KEY, JSON.stringify({ current: NAV.current, t: Date.now() })); } catch (e) {} }
+function saveNavProgress() { try { localStorage.setItem(NAV_PROG_KEY, JSON.stringify({ current: NAV.current, hasBike: !!NAV.hasBike, t: Date.now() })); } catch (e) {} }
 function clearNavState() { try { localStorage.removeItem(NAV_KEY); localStorage.removeItem(NAV_PROG_KEY); } catch (e) {} }
 
 function checkResume() {
@@ -1848,17 +1933,21 @@ function checkResume() {
   const current = Math.min(p?.current ?? s.current ?? 0, s.steps.length - 1);
   document.getElementById('resume-text').innerHTML = `<b>Trip to ${esc(s.end.label)}</b><br><span style="color:#666;font-size:12px">${s.walkOnly ? 'Walking' : 'Bike'} · still in progress</span>`;
   document.getElementById('resume-banner').classList.add('visible');
-  document.getElementById('resume-go').onclick = () => resumeTrip(s, current);
-  document.getElementById('resume-x').onclick = () => {
-    document.getElementById('resume-banner').classList.remove('visible');
-    if (s.historyId) { NAV.historyId = s.historyId; logJourneyEnd(false); }
-    clearNavState();
-    requestLocation();
-  };
+  resumeOffer = s;
+  document.getElementById('resume-go').onclick = () => { resumeOffer = null; resumeTrip(s, current, !!p?.hasBike); };
+  document.getElementById('resume-x').onclick = () => { dismissResume(); if (!S.start) requestLocation(); };
   return true;
 }
+// Saying no to the saved trip (×, or planning a new one): log it as ended and forget it
+let resumeOffer = null;
+function dismissResume() {
+  document.getElementById('resume-banner').classList.remove('visible');
+  if (resumeOffer?.historyId) { NAV.historyId = resumeOffer.historyId; logJourneyEnd(false); }
+  resumeOffer = null;
+  clearNavState();
+}
 
-function resumeTrip(s, current) {
+function resumeTrip(s, current, hasBike) {
   Object.assign(S, { start: s.start, end: s.end, startIsGPS: !!s.startIsGPS, bikeFilter: s.bikeFilter || 'any',
     routeType: s.routeType || 'balanced', pickup: s.pickup, dropoff: s.dropoff, walkIn: s.walkIn, cycle: s.cycle,
     walkOut: s.walkOut, walkOnly: s.walkOnly, journeyActive: true });
@@ -1874,7 +1963,7 @@ function resumeTrip(s, current) {
   document.getElementById('to-clear').classList.add('visible');
   if (markerEnd) map.removeLayer(markerEnd);
   markerEnd = L.marker([S.end.lat,S.end.lon], {icon: makeEndIcon()}).addTo(map);
-  NAV.steps = s.steps; NAV.current = current; NAV.historyId = s.historyId;
+  NAV.steps = s.steps; NAV.current = current; NAV.historyId = s.historyId; NAV.hasBike = hasBike;
   redrawJourney();
   startNavigation(true);
   loadStations(false);
@@ -1985,6 +2074,7 @@ function setStart(lat, lon, label, isGPS=false) {
 }
 
 function setEnd(lat, lon, label) {
+  if (resumeOffer) dismissResume();               // a new destination answers the resume offer
   S.end = {lat,lon,label};
   document.getElementById('to-input').value = label;
   document.getElementById('to-clear').classList.add('visible');
@@ -2130,10 +2220,11 @@ function mergeSuggestions(q, remote) {
   }).slice(0, 7);
 }
 
-function bindAutocomplete(inputId, listId, onSelect) {
+function bindAutocomplete(inputId, listId, onSelect, placedLabel) {
   const input = document.getElementById(inputId);
   const list  = document.getElementById(listId);
-  let timer, cache = {}, inflight = null;
+  const clearBtn = document.getElementById(inputId.replace('-input', '-clear'));
+  let timer, cache = {}, inflight = null, searching = false;
   // Nearest earlier answer for a prefix of q, shown instantly while the new one loads
   const fromPrefix = q => { for (let i = q.length - 1; i >= MIN_QUERY; i--) { const c = cache[q.slice(0, i)]; if (c) return c; } return null; };
   const hide = () => list.style.display = 'none';
@@ -2171,7 +2262,17 @@ function bindAutocomplete(inputId, listId, onSelect) {
       } catch(e) { if (e.name !== 'AbortError' && inflight === ctl) hide(); }
     }, 120);
   });
-  input.addEventListener('blur',  () => setTimeout(hide, 200));
+  // Leaving the box without choosing: it goes back to the place the trip uses, so the box
+  // and the plan never disagree. Emptying it clears that end of the trip (S7).
+  input.addEventListener('blur', () => setTimeout(() => {
+    hide();
+    if (searching || NAV.active || document.activeElement === input) return;
+    const typed = input.value.trim(), placed = placedLabel();
+    if (typed === placed) return;
+    if (!typed) { clearBtn.click(); return; }
+    input.value = placed;
+    clearBtn.classList.toggle('visible', !!placed);
+  }, 200));
   // Tapping into the box shows recent places straight away, like Google Maps
   input.addEventListener('focus', () => { const q = input.value.trim(); show(mergeSuggestions(q, cache[q] || [])); });
   // Enter: go straight to the best match for the full text, no need to tap a suggestion
@@ -2182,11 +2283,13 @@ function bindAutocomplete(inputId, listId, onSelect) {
     if (!q) return;
     hide(); toast('Finding address…', 0);
     let items = cache[q];
+    searching = true;
     try {
       if (!items || !items.length) { items = await getSuggestions(q, ctl.signal); cache[q] = items; }
       // Photon can miss full addresses with postcodes; Nominatim handles those better
       if (!items.length) items = await nominatimSuggestions(q, splitHouseNumber(q).num).catch(() => []);
     } catch (e) { if (e.name === 'AbortError') return; items = []; }
+    finally { if (inflight === ctl) searching = false; }
     if (inflight !== ctl || input.value.trim() !== q) return;    // you kept typing, so drop this result
     if (!items.length) items = mergeSuggestions(q, []);          // last resort: recent places, stations
     if (!items.length) { toast(`Couldn't find "${q}"`, 3500); return; }
@@ -2266,8 +2369,8 @@ document.getElementById('avail-popup-close').addEventListener('click', hideAvail
 document.getElementById('avail-wait').addEventListener('click', hideAvailAlert);
 document.getElementById('avail-reroute').addEventListener('click', rerouteStation);
 
-bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false));
-bindAutocomplete('to-input',  'to-ac',  setEnd);
+bindAutocomplete('from-input','from-ac',(lat,lon,label)=>setStart(lat,lon,label,false), () => S.start?.label || '');
+bindAutocomplete('to-input',  'to-ac',  setEnd, () => S.end?.label || '');
 
 // Re-render exploration-mode stations when the map moves
 let moveTimer;
@@ -2275,10 +2378,19 @@ map.on('moveend', () => { if (!S.start && !S.end && !NAV.active) { clearTimeout(
 // During navigation, a drag/pinch by you pauses the follow camera for a few seconds
 map.on('move', e => { if (NAV.active && e.originalEvent && NAV.preview == null) { NAV.paused = true; NAV.userPanUntil = Date.now() + 6000; } });
 
+// Height of the turn card block, so messages can sit just below it (L7)
+(() => {
+  const ov = document.getElementById('nav-overlay');
+  const set = () => document.body.style.setProperty('--nav-h', `${ov.offsetHeight}px`);
+  if (window.ResizeObserver) new ResizeObserver(set).observe(ov);
+  window.addEventListener('resize', set);
+})();
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); }, 15000);   // keeps the arrival time honest when you stop
+setInterval(() => { updateBadge(); if (NAV.active) updateNavCard(); else refreshArrival(); }, 15000);   // keeps the arrival time honest when you stop
 loadStations();
-if (!checkResume()) setTimeout(requestLocation, 600);
+checkResume();
+setTimeout(requestLocation, 600);                 // even while the resume offer shows, so a new trip can be planned (N12)
 </script>
 <!-- Anonymous usage counts: no cookies, no personal data. Dashboard visible only to the site owner. -->
 <script data-goatcounter="https://rothar.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
