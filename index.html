@@ -185,7 +185,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 #map-wrap { flex: 1; position: relative; min-height: 0; overflow: hidden; }
 #map { height: 100%; width: 100%; }
 /* While riding, the message joins the nav overlay's stack below the turn card and dock count, so it never covers them */
-body.navigating #toast { position: static; transform: none; margin-top: 8px; align-self: center; width: max-content; white-space: normal; }
+body.navigating #toast { position: static; transform: none; margin-top: 8px; align-self: center; width: max-content; max-width: 100%; white-space: normal; }
 #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); color: white; padding: 8px 16px; border-radius: 20px; font-size: 13px; z-index: 2000; display: none; white-space: nowrap; pointer-events: none; max-width: 90%; text-align: center; }
 .map-legend { position: absolute; bottom: 26px; left: 10px; background: white; border-radius: 14px; padding: 8px 11px; font-size: 11px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); color: #444; line-height: 1.8; }
 .leg-row { display: flex; align-items: center; gap: 5px; }
@@ -243,14 +243,12 @@ body.navigating .maplibregl-ctrl-top-left { display: none; }
 #nav-facing { position: absolute; bottom: calc(160px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 1550; display: none; padding: 9px 16px; border-radius: 22px; font-size: 15px; font-weight: 700; color: white; box-shadow: 0 4px 14px rgba(0,0,0,0.25); pointer-events: none; }
 #nav-facing.ok { background: #16a34a; } #nav-facing.warn { background: #d97706; } #nav-facing.bad { background: #dc2626; }
 
-/* While navigating, messages and the popup sit below the turn card and dock count, never on them (L7).
-   --nav-h is the height of that block, kept current from script. */
-body.navigating #toast { top: calc(var(--nav-h, 160px) + 8px); white-space: normal; width: max-content; max-width: calc(100% - 24px); }
+/* While navigating, the popup stays below the turn card and dock count, never on them (L7).
+   --nav-h is the height of that block, kept current from script. Messages join the block itself (see #toast). */
 body.navigating #avail-popup { max-height: calc(100% - 112px - env(safe-area-inset-bottom) - var(--nav-h, 160px) - 8px); overflow-y: auto; }
 /* Landscape phone: turn card and messages on the left, the popup on the right */
 @media (orientation: landscape) and (max-height: 520px) {
   body.navigating #nav-overlay { right: auto; width: min(440px, 52%); }
-  body.navigating #toast { left: 8px; transform: none; max-width: calc(min(440px, 52%) - 16px); }
   body.navigating #avail-popup { left: auto; right: 12px; width: min(380px, calc(48% - 24px)); max-height: calc(100% - 112px - env(safe-area-inset-bottom) - 18px); }
   body.navigating #nav-facing { left: 76%; }
 }
