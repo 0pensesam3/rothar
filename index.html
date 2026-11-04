@@ -1749,6 +1749,23 @@ function resyncStep(lat, lon, force) {
   if (best > NAV.current && bd < 30) { NAV.current = best; saveNavProgress(); }
 }
 
+// Metres from the nearest point of any leg of the planned route
+function distFromRoute(lat, lon) {
+  let best = Infinity;
+  for (const leg of [S.walkOnly, S.walkIn, S.cycle, S.walkOut]) {
+    const c = leg?.geometry?.coordinates; if (!c) continue;
+    for (let i = 0; i < c.length - 1; i++) best = Math.min(best, distToSeg(lat, lon, c[i], c[i + 1]));
+  }
+  return best;
+}
+// Call it out once you've stayed more than 40 m from the route for 15 s; a single stray fix doesn't count
+function checkOffRoute(lat, lon) {
+  if (distFromRoute(lat, lon) <= 40) { NAV.offSince = null; NAV.offCalled = false; return; }
+  const now = Date.now();
+  if (!NAV.offSince) NAV.offSince = now;
+  if (!NAV.offCalled && now - NAV.offSince >= 15000) { NAV.offCalled = true; toast("You're off route", 5000); }
+}
+
 function onNavPosition(pos) {
   if (!NAV.active) return;
   if (pos.coords.accuracy > 50) return;   // too vague to place you: wait for a better fix rather than skip steps
@@ -1762,6 +1779,8 @@ function onNavPosition(pos) {
     NAV.userMarker = L.marker([NAV.dispLat,NAV.dispLon],{icon:L.divIcon({className:'',html:dotHTML,iconSize:[48,48],iconAnchor:[24,24]}),zIndexOffset:1000,rotationAlignment:'map'}).addTo(map);
   }
   if (!NAV.riderMarker) NAV.riderMarker = L.marker([NAV.dispLat,NAV.dispLon],{icon:makeRiderIcon(),zIndexOffset:1001}).addTo(map);
+
+  checkOffRoute(lat, lon);
 
   // Where you are on the route
   resyncStep(lat, lon, !!NAV.resync);
@@ -1823,7 +1842,7 @@ function startNavigation(resumed) {
   Object.assign(NAV, { active: true, proximityFor: null, lastAlert: null, userLat: undefined, userLon: undefined,
     view: 'follow', gpsHeading: null, heading: null, headingTarget: null, aheadBearing: null,
     dispLat: null, dispLon: null, dispHeading: null, camReady: false, camStarted: false, paused: false,
-    resync: resumed, pinKey: null, preview: null, hasBike: resumed ? !!NAV.hasBike : false, awayFixes: 0 });
+    resync: resumed, pinKey: null, preview: null, hasBike: resumed ? !!NAV.hasBike : false, awayFixes: 0, offSince: null, offCalled: false });
   setViewLabel();
   startRider3d();
   requestWakeLock();
