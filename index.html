@@ -1760,7 +1760,13 @@ function distFromRoute(lat, lon) {
 }
 // Call it out once you've stayed more than 40 m from the route for 15 s; a single stray fix doesn't count
 function checkOffRoute(lat, lon) {
-  if (distFromRoute(lat, lon) <= 40) { NAV.offSince = null; NAV.offCalled = false; return; }
+  // Estimated plans have no line for some legs: with nothing to be off, say nothing
+  const cur = NAV.steps[NAV.current], pickI = NAV.steps.findIndex(s => s.legType === 'pickup');
+  const leg = S.walkOnly ? S.walkOnly
+            : cur?.legType === 'cycle' || cur?.legType === 'dropoff' ? S.cycle
+            : (pickI >= 0 && NAV.current < pickI) ? S.walkIn : S.walkOut;
+  const d = leg?.geometry?.coordinates ? distFromRoute(lat, lon) : Infinity;
+  if (d <= 40 || d === Infinity) { NAV.offSince = null; NAV.offCalled = false; return; }
   const now = Date.now();
   if (!NAV.offSince) NAV.offSince = now;
   if (!NAV.offCalled && now - NAV.offSince >= 15000) { NAV.offCalled = true; toast("You're off route", 5000); }
