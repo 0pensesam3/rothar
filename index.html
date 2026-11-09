@@ -166,7 +166,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; h
 .search-input:focus { border-color: #e31837; background: white; }
 .clear-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #aaa; cursor: pointer; font-size: 16px; display: none; line-height: 1; padding: 0; }
 .clear-btn.visible { display: block; }
-.loc-btn { flex-shrink: 0; background: white; color: #e31837; border: 1.5px solid #f3c2cb; border-radius: 20px; padding: 9px 10px; cursor: pointer; font-size: 11.5px; white-space: nowrap; font-weight: 600; font-family: inherit; }
+.loc-btn { flex-shrink: 0; width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; background: white; color: #e31837; border: 1.5px solid #f3c2cb; border-radius: 50%; cursor: pointer; }
 #filter-row, #route-row { display: flex; gap: 6px; }
 .pill-btn { flex: 1; padding: 7px 4px; border: 1.5px solid transparent; border-radius: 20px; background: #f2f2ef; font-size: 11px; cursor: pointer; color: #555; white-space: nowrap; font-family: inherit; text-align: center; transition: all 0.15s; }
 .pill-btn.active-red  { background: #e31837; border-color: #e31837; color: white; font-weight: 600; }
@@ -192,6 +192,8 @@ body.navigating #toast { position: static; transform: none; margin-top: 8px; ali
 .leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .leg-tfl { font-size: 9.5px; color: #777; border-top: 1px solid #eee; margin-top: 3px; padding-top: 3px; }
 body:has(#journey-panel.visible) .maplibregl-ctrl-bottom-right { bottom: 16px; }
+/* Map credits stay to the right of the key and wrap upwards, so the key never covers them */
+body:not(.navigating) .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { box-sizing: border-box; max-width: calc(100vw - 180px); }
 
 /* ── Resume banner ── */
 #resume-banner { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 2100; background: white; border-radius: 18px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); padding: 10px 10px 10px 14px; display: none; align-items: center; gap: 10px; font-size: 13px; color: #111; }
@@ -344,7 +346,7 @@ body.navigating #avail-popup { max-height: calc(100% - 112px - env(safe-area-ins
       <button class="clear-btn" id="from-clear">×</button>
       <div class="autocomplete-list" id="from-ac"></div>
     </div>
-    <button class="loc-btn" id="loc-btn">📍 Use my current location</button>
+    <button class="loc-btn" id="loc-btn" aria-label="Use my current location" title="Use my current location"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
   </div>
   <div class="input-row">
     <span class="row-icon">▲</span>
