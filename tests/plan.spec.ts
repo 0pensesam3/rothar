@@ -130,6 +130,13 @@ test.describe('Planning', () => {
     expect(count, 'router "arrived" lines inside the step list').toBe(0);
   });
 
+  test('P6b a name that differs from the map still finds the place', async ({ app, page }) => {
+    // "Guinea Grill" is "The Guinea" in OpenStreetMap: an extra word shouldn't mean no results
+    await app.open();
+    await app.planTo('Columbia Road Flower Market Grill', /Columbia Road Flower Market/);
+    await expect(page.locator('#to-input')).toHaveValue('Columbia Road Flower Market');
+  });
+
   test('P7 whole trip is in view after planning', async ({ app, page }) => {
     await app.open();
     await app.planTo('Liverpool', 'Liverpool Street Station');
