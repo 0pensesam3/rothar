@@ -74,6 +74,14 @@ test.describe('Search', () => {
     await page.locator('#to-input').pressSequentially('Bishops', { delay: 40 });
     await expect(page.locator('#to-ac .ac-item').filter({ hasText: 'Bishopsgate' })).toBeVisible();
   });
+
+  test('S8 a place found by the backup search keeps its name, not its street address', async ({ app, page, world }) => {
+    // When Photon is down, Nominatim answers; "The Guinea" used to come back as "30 Bruton Place"
+    world.down.photon = true;
+    await app.open();
+    await app.planTo('Bethnal Green Library', /Bethnal Green Library/);
+    await expect(page.locator('#to-input')).toHaveValue('Bethnal Green Library');
+  });
 });
 
 test.describe('Planning', () => {

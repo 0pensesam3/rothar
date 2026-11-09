@@ -1,7 +1,7 @@
 import { test as base, expect, Page, Route } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { newWorld, stationJSON, valhallaRoute, osrmRoute, photonResults, metresBetween, World, HOME } from './world';
+import { newWorld, stationJSON, valhallaRoute, osrmRoute, photonResults, nominatimResults, metresBetween, World, HOME } from './world';
 
 // The app's own top-level state, reachable from page.evaluate
 declare const S: any; declare const NAV: any;
@@ -99,7 +99,7 @@ async function wire(page: Page, world: World, live: boolean) {
       return json(route, { status: 200, result: world.postcodes.filter(p => p.postcode.replace(/\s+/g, '').startsWith(q))
         .map(p => ({ postcode: p.postcode, latitude: p.lat, longitude: p.lon, admin_ward: p.ward, admin_district: p.district })) });
     }
-    if (host === 'nominatim.openstreetmap.org') return json(route, []);
+    if (host === 'nominatim.openstreetmap.org') return json(route, nominatimResults(world, url.searchParams.get('q') || ''));
     return route.abort();
    } catch (e) {
      // A slow answer can outlive the test; nothing to do then

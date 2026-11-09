@@ -2220,7 +2220,10 @@ async function nominatimSuggestions(q, num) {
     const road  = addr.road || addr.pedestrian || addr.footway || addr.path || '';
     const area  = [addr.suburb||addr.city_district, addr.postcode].filter(Boolean).join(' · ');
     let main, sub = area;
-    if (addr.house_number) main = `${addr.house_number} ${road}`;
+    // A named place (pub, shop, museum) keeps its name, with the address underneath, as Photon results do
+    const named = item.name && item.name !== road && !['highway', 'place', 'building'].includes(item.class);
+    if (named) { main = item.name; sub = [[addr.house_number, road].filter(Boolean).join(' '), area].filter(Boolean).join(' · '); }
+    else if (addr.house_number) main = `${addr.house_number} ${road}`;
     else if (num && road) { main = `${num} ${road}`; sub = ['Street level', area].filter(Boolean).join(' · '); }
     else main = road || item.display_name.split(',')[0];
     return { main: main.trim(), sub, lat: parseFloat(item.lat), lon: parseFloat(item.lon) };
