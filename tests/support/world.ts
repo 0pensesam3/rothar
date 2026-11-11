@@ -147,6 +147,16 @@ export function photonResults(world: World, q: string) {
                   osm_key: 'amenity', osm_value: p.kind || 'place', type: 'house' } })) };
 }
 
+// The backup search (Nominatim), in its own format. Places carry a house number, like real pubs and shops do.
+export function nominatimResults(world: World, q: string) {
+  return photonResults(world, q).features.map((f: any) => ({
+    lat: String(f.geometry.coordinates[1]), lon: String(f.geometry.coordinates[0]),
+    name: f.properties.name, class: 'amenity', type: f.properties.osm_value,
+    display_name: `${f.properties.name}, 30, ${f.properties.street}, London`,
+    address: { amenity: f.properties.name, house_number: '30', road: f.properties.street,
+               suburb: f.properties.district, postcode: f.properties.postcode } }));
+}
+
 // The backup router (OSRM) answers in its own format: the same L-shaped route, so a
 // fallback plan has real directions rather than estimates.
 export function osrmRoute(from: { lat: number; lon: number }, to: { lat: number; lon: number }, profile: string, street?: string) {

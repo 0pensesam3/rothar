@@ -74,6 +74,14 @@ test.describe('Search', () => {
     await page.locator('#to-input').pressSequentially('Bishops', { delay: 40 });
     await expect(page.locator('#to-ac .ac-item').filter({ hasText: 'Bishopsgate' })).toBeVisible();
   });
+
+  test('S8 a place found by the backup search keeps its name, not its street address', async ({ app, page, world }) => {
+    // When Photon is down, Nominatim answers; "The Guinea" used to come back as "30 Bruton Place"
+    world.down.photon = true;
+    await app.open();
+    await app.planTo('Bethnal Green Library', /Bethnal Green Library/);
+    await expect(page.locator('#to-input')).toHaveValue('Bethnal Green Library');
+  });
 });
 
 test.describe('Planning', () => {
@@ -128,6 +136,13 @@ test.describe('Planning', () => {
     const text = await page.locator('#steps-list').innerText();
     const count = (text.match(/You have arrived at your destination/g) || []).length;
     expect(count, 'router "arrived" lines inside the step list').toBe(0);
+  });
+
+  test('P6b a name that differs from the map still finds the place', async ({ app, page }) => {
+    // "Guinea Grill" is "The Guinea" in OpenStreetMap: an extra word shouldn't mean no results
+    await app.open();
+    await app.planTo('Columbia Road Flower Market Grill', /Columbia Road Flower Market/);
+    await expect(page.locator('#to-input')).toHaveValue('Columbia Road Flower Market');
   });
 
   test('P7 whole trip is in view after planning', async ({ app, page }) => {

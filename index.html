@@ -1064,7 +1064,9 @@ function buildStepRows(route) {
   if (!route) return '';
   let html = '';
   route.legs.forEach(leg => leg.steps.forEach(step => {
-    if (step.maneuver.type === 'depart') return;
+    // The router ends every leg with "You have arrived at your destination". Mid-trip that's wrong:
+    // the panel's own dock and destination rows already mark where each leg ends.
+    if (step.maneuver.type === 'depart' || step.maneuver.type === 'arrive') return;
     const text = step._instruction || stepText(step);
     const d = step.distance > 8 ? fmtDist(step.distance) : '';
     html += `<div class="step-row"><span class="step-ic">${stepIcon(step.maneuver.type,step.maneuver.modifier)}</span><span class="step-txt">${text}</span><span class="step-d">${d}</span></div>`;
@@ -2141,7 +2143,14 @@ async function getSuggestions(q, signal) {
     ? postcodeSuggestions(q.trim(), signal).catch(e => { if (e.name === 'AbortError') throw e; return []; })
     : Promise.resolve([]);
   try {
-    const main = await photonSuggestions(q, signal);
+    let main = await photonSuggestions(q, signal);
+    // Photon needs every word to match, so a name that differs from the map's ("Guinea Grill" is
+    // "The Guinea" in OpenStreetMap) finds nothing. Retry without the last word, flagged as a near match.
+    const words = q.trim().split(/\s+/);
+    if (!main.length && words.length >= 2 && !splitHouseNumber(q).num) {
+      main = (await photonSuggestions(words.slice(0, -1).join(' '), signal))
+        .map(x => ({ ...x, sub: ['Closest match', x.sub].filter(Boolean).join(' · ') }));
+    }
     return [...(await pc), ...main];
   } catch(e) {
     if (e.name === 'AbortError') throw e;              // superseded by newer typing, not a failure
@@ -2211,7 +2220,10 @@ async function nominatimSuggestions(q, num) {
     const road  = addr.road || addr.pedestrian || addr.footway || addr.path || '';
     const area  = [addr.suburb||addr.city_district, addr.postcode].filter(Boolean).join(' · ');
     let main, sub = area;
-    if (addr.house_number) main = `${addr.house_number} ${road}`;
+    // A named place (pub, shop, museum) keeps its name, with the address underneath, as Photon results do
+    const named = item.name && item.name !== road && !['highway', 'place', 'building'].includes(item.class);
+    if (named) { main = item.name; sub = [[addr.house_number, road].filter(Boolean).join(' '), area].filter(Boolean).join(' · '); }
+    else if (addr.house_number) main = `${addr.house_number} ${road}`;
     else if (num && road) { main = `${num} ${road}`; sub = ['Street level', area].filter(Boolean).join(' · '); }
     else main = road || item.display_name.split(',')[0];
     return { main: main.trim(), sub, lat: parseFloat(item.lat), lon: parseFloat(item.lon) };
